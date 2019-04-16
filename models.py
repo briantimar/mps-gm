@@ -40,7 +40,6 @@ class MPS(nn.Module):
                 t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
 
 
-
     def norm(self):
         cont = torch.einsum('ijk,ilk->jl', self.left_tensor, self.left_tensor)
         for site in range(self.L-2):
