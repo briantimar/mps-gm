@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 
 def dag(tensor):
     return torch.transpose(conj(tensor), 0, 1)
@@ -7,28 +8,38 @@ def dag(tensor):
 def conj(tensor):
     return tensor
 
-class MPS:
+class MPS(nn.Module):
     """ A matrix product state ..."""
 
     def __init__(self, L, local_dim, bond_dim):
         """ L =  size of the physical system
         local_dim = dimensionality of each local hilbert space
         bond_dimension = uniform bond dimension"""
+        super().__init__()
         assert L >= 3
         self.L = L
         self.local_dim = local_dim
         self.bond_dim = bond_dim
+        self.build_tensors()
+        self.init_tensors()
 
     def build_tensors(self):
         """Create and store local tensors.
         Local tensor has shape (bond_dim, bond_dim, L)"""
-        def normalize(x):
-            return x / np.sqrt(self.bond_dim * self.local_dim)
-        self.bulk_tensor = normalize( torch.randn(self.bond_dim, self.bond_dim,
-                                        self.local_dim) )
-        self.left_tensor = normalize(torch.randn(1, self.bond_dim, self.local_dim))
 
-        self.right_tensor = normalize( torch.randn(self.bond_dim, 1, self.local_dim))
+        self.bulk_tensor = nn.Parameter(torch.randn(self.bond_dim, self.bond_dim,
+                                        self.local_dim,requires_grad=True))
+        self.left_tensor = nn.Parameter(torch.randn(1, self.bond_dim, self.local_dim,
+                                                requires_grad=True))
+        self.right_tensor = nn.Parameter(torch.randn(self.bond_dim, 1, self.local_dim,
+                                                requires_grad = True))
+
+    def init_tensors(self):
+        for t in self.parameters():
+            with torch.no_grad():
+                t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
+
+
 
     def norm(self):
         cont = torch.einsum('ijk,ilk->jl', self.left_tensor, self.left_tensor)
@@ -69,6 +80,12 @@ class MPS:
         a = torch.einsum('ijb,jkb->ikb', m, self.get_local_matrix(self.L-1, x[:,self.L-1]))
         return a.view(N)
 
-    def prob(self, x):
+    def prob_unnormalized(self, x):
         a = self.amplitude(x)
         return a * a
+
+    def nll_cost(self, x):
+        return - self.prob_unnormalized(x).log().mean() + self.norm().log()
+
+    def prob_normalized(self, x):
+        return self.prob_unnormalized(x) / self.norm().sqrt()
