@@ -185,33 +185,44 @@ class MPS(nn.Module):
             return self.right_tensor
         return self.bulk_tensor
 
-    def get_local_matrix(self, site_index, spin_index):
+    def get_local_matrix(self, site_index, spin_index, rotation=None):
         """spin_index = an (N,) tensor of spin configurations.
+            rotation: if not None, (N,d,d,) complex tensor
+             defining single-qubit unitaries to contract
+            with local tensors before returning. (d= localdim)
             returns: (N,D,D) tensor holding local matrices for each spin
-            configuration."""
+            configuration. (D = bonddim)"""
         local_tensor = self.get_local_tensor(site_index)
+        if rotation is not None:
+            contractor = lambda x, y: torch.einsum('ast,atij->asij', x, y)
+            local_tensor = rotation.apply_mul(local_tensor, contractor)
         return local_tensor[spin_index,...]
 
-    def amplitude(self, x):
+    def amplitude(self, x, rotation=None):
         """ x= (N, L) tensor listing spin configurations.
-            Returns: (N,) tensor of amplitudes"""
+        rotations: (N, d, d) complextensor of local unitaries applied.
+            Returns: (N,) tensor of amplitudes.
+            """
         if len(x.shape)==1:
             x = x.unsqueeze(0)
         N = x.shape[0]
         contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
-        m = self.get_local_matrix(0, x[:,0]).apply_mul(
-                                            self.get_local_matrix(1,x[:,1]),
-                                            contractor)
-        for ii in range(self.L-3):
-            m = m.apply_mul(self.get_local_matrix(ii+2, x[:,ii+2]),
-                                            contractor)
+        m0 = self.get_local_matrix(0, x[:,0],rotation=rotation)
+        m1 = self.get_local_matrix(1, x[:,1], rotation=rotation)
+        m = m0.apply_mul( m1,contractor)
+        #bulk tensor is constant
+        if self.L > 2:
+            mbulk = self.get_local_matrix(2, x[:,2],
+                                            rotation=rotation)
+            for ii in range(self.L-3):
+                m = m.apply_mul(mbulk, contractor)
 
-        a = m.apply_mul(self.get_local_matrix(self.L-1, x[:,self.L-1]),
-                                        contractor)
+            a = m.apply_mul(self.get_local_matrix(self.L-1, x[:,self.L-1],
+                                            rotation=rotation),contractor)
         return a.view(N)
 
-    def prob_unnormalized(self, x):
-        a = self.amplitude(x)
+    def prob_unnormalized(self, x,rotation=None):
+        a = self.amplitude(x, rotation=rotation)
         return (a * a.conj()).real
 
     def nll_loss(self, x):
