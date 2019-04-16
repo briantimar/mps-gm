@@ -212,9 +212,9 @@ class MPS(nn.Module):
 
     def prob_unnormalized(self, x):
         a = self.amplitude(x)
-        return a * a
+        return (a * a.conj()).real
 
-    def nll_cost(self, x):
+    def nll_loss(self, x):
         return - self.prob_unnormalized(x).log().mean() + self.norm().log()
 
     def prob_normalized(self, x):
