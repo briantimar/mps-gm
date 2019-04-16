@@ -1,9 +1,7 @@
 """ tools for interfacing gen model outputs with quantum objects """
 import qutip as qt
 import numpy as np
-
-from datagen.qutip_utils import get_tensor_pauli
-
+import torch
 
 def to_meas_setting(pauli_code, ms_type='integer'):
     """Convert a particular pauli operator 'X', 'Y', or 'Z' into a measurement
@@ -87,7 +85,6 @@ def int_basis_indx_to_paulis(indx, L,include_identity=True):
     int_ms = int_basis_indx_to_ms(indx, L, nsetting=nsetting)
     return int_ms_to_pauli_code(int_ms)
 
-
 def to_cartesian(angles):
     """ Convert an array of angles to cartesian coordinates."""
     theta, phi = angles[...,0], angles[...,1]
@@ -96,3 +93,27 @@ def to_cartesian(angles):
     z = np.cos(theta)
     settings = np.stack([x,y,z], axis=-1)
     return settings
+
+from models import ComplexTensor
+
+def pauli_exp(theta, phi):
+    """ Return a ComplexTensor representing local unitaries specified by the
+    given angles.s
+        Returns: (*angles.shape, 2,2) complexTensor"""
+    if theta.shape != phi.shape:
+        raise ValueError
+
+    rU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
+    iU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
+
+    rU[...,0,0] = (theta/2).cos()*(phi/2).cos()
+    rU[...,0,1] = (theta/2).sin()*(phi/2).cos()
+    rU[...,1,0] = -(theta/2).sin()*(phi/2).cos()
+    rU[...,1,1] = (theta/2).cos()*(phi/2).cos()
+
+    iU[...,0,0] = (theta/2).cos()*(phi/2).sin()
+    iU[...,0,1] = (theta/2).sin()*(phi/2).sin()
+    iU[...,1,0] = (theta/2).sin()*(phi/2).sin()
+    iU[...,1,1] = -(theta/2).cos()*(phi/2).sin()
+
+    return ComplexTensor(rU, iU)

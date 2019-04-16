@@ -122,6 +122,9 @@ class ComplexTensor:
     def __repr__(self):
         return "ComplexTensor shape {0}".format(self.shape)
 
+    def size(self, i):
+        return self.real.size(i)
+
 class MPS(nn.Module):
     """ MPS with complex amplitudes """
 
@@ -192,41 +195,54 @@ class MPS(nn.Module):
             with local tensors before returning. (d= localdim)
             returns: (N,D,D) tensor holding local matrices for each spin
             configuration. (D = bonddim)"""
+        #shape (local_dim, D, D)
         local_tensor = self.get_local_tensor(site_index)
+
         if rotation is not None:
-            contractor = lambda x, y: torch.einsum('ast,atij->asij', x, y)
+            if spin_index.size(0) != rotation.size(0):
+                raise ValueError("Index tensor incompatible with rotations")
+            N = spin_index.size(0)
+            contractor = lambda x, y: torch.einsum('ast,tij->asij', x, y)
+            #shape (N, local_dim, D, D)
             local_tensor = rotation.apply_mul(local_tensor, contractor)
-        return local_tensor[spin_index,...]
+            #shape (N, D, D)
+            local_matrix = local_tensor[range(N), spin_index, ...]
+        else:
+            local_matrix = local_tensor[spin_index, ...]
+        return local_matrix
 
     def amplitude(self, x, rotation=None):
         """ x= (N, L) tensor listing spin configurations.
-        rotations: (N, d, d) complextensor of local unitaries applied.
+        rotations: (N, L,d, d) complextensor of local unitaries applied.
             Returns: (N,) tensor of amplitudes.
             """
         if len(x.shape)==1:
             x = x.unsqueeze(0)
         N = x.shape[0]
         contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
-        m0 = self.get_local_matrix(0, x[:,0],rotation=rotation)
-        m1 = self.get_local_matrix(1, x[:,1], rotation=rotation)
+
+        def rotated_local_matrix(site_index):
+            rot=None if rotation is None else rotation[:, site_index, ...]
+            return self.get_local_matrix(site_index, x[:, site_index],
+                                            rotation=rot)
+        m0 = rotated_local_matrix(0)
+        m1 = rotated_local_matrix(1)
         m = m0.apply_mul( m1,contractor)
-        #bulk tensor is constant
+
         if self.L > 2:
-            mbulk = self.get_local_matrix(2, x[:,2],
-                                            rotation=rotation)
             for ii in range(self.L-3):
+                mbulk = rotated_local_matrix(ii+2)
                 m = m.apply_mul(mbulk, contractor)
 
-            a = m.apply_mul(self.get_local_matrix(self.L-1, x[:,self.L-1],
-                                            rotation=rotation),contractor)
+            a = m.apply_mul(rotated_local_matrix(self.L-1),contractor)
         return a.view(N)
 
     def prob_unnormalized(self, x,rotation=None):
         a = self.amplitude(x, rotation=rotation)
         return (a * a.conj()).real
 
-    def nll_loss(self, x):
-        return - self.prob_unnormalized(x).log().mean() + self.norm().log()
+    def nll_loss(self, x, rotation=None):
+        return - self.prob_unnormalized(x,rotation=rotation).log().mean() + self.norm().log()
 
-    def prob_normalized(self, x):
-        return self.prob_unnormalized(x) / self.norm()
+    def prob_normalized(self, x, rotation=None):
+        return self.prob_unnormalized(x,rotation=rotation) / self.norm()
