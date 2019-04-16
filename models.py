@@ -8,7 +8,7 @@ def dag(tensor):
 def conj(tensor):
     return tensor
 
-class MPS(nn.Module):
+class SingleBasisMPS(nn.Module):
     """ A matrix product state ..."""
 
     def __init__(self, L, local_dim, bond_dim):
