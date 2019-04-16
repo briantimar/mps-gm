@@ -93,7 +93,6 @@ class ComplexTensor:
         self.imag = imag
 
     def apply_mul(self, other, mul_op):
-        print(self.shape, other.shape)
         r = mul_op(self.real, other.real) - mul_op(self.imag, other.imag)
         i = mul_op(self.real, other.imag) + mul_op(self.imag, other.real)
         return ComplexTensor(r,i)
@@ -104,6 +103,24 @@ class ComplexTensor:
 
     def conj(self):
         return ComplexTensor(self.real, -self.imag)
+
+    def __getitem__(self, slice):
+        return ComplexTensor(self.real[slice], self.imag[slice])
+
+    def view(self, *shape):
+        return ComplexTensor(self.real.view(*shape), self.imag.view(*shape))
+    def squeeze(self):
+        return ComplexTensor(self.real.squeeze(), self.imag.squeeze())
+
+    def __mul__(self, other):
+        mul_op = lambda x, y: x * y
+        return self.apply_mul(other, mul_op)
+
+    def abs(self):
+        return (self * self.conj()).real.sqrt()
+
+    def __repr__(self):
+        return "ComplexTensor shape {0}".format(self.shape)
 
 class MPS(nn.Module):
     """ MPS with complex amplitudes """
@@ -144,7 +161,6 @@ class MPS(nn.Module):
             with torch.no_grad():
                 t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
 
-
     def norm(self):
         init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
         spin_contractor = lambda x, y: torch.einsum('sik,sjl->ijkl', x, y)
@@ -158,4 +174,48 @@ class MPS(nn.Module):
             cont = cont.apply_mul(bc, bulk_contractor)
 
         cont = cont.apply_mul(rc, bulk_contractor)
-        return cont
+        return cont.squeeze().real
+
+    def get_local_tensor(self, site_index):
+        if (site_index <0) or (site_index >= self.L):
+            raise ValueError("Invalid site index")
+        if site_index == 0:
+            return self.left_tensor
+        elif site_index == self.L-1:
+            return self.right_tensor
+        return self.bulk_tensor
+
+    def get_local_matrix(self, site_index, spin_index):
+        """spin_index = an (N,) tensor of spin configurations.
+            returns: (N,D,D) tensor holding local matrices for each spin
+            configuration."""
+        local_tensor = self.get_local_tensor(site_index)
+        return local_tensor[spin_index,...]
+
+    def amplitude(self, x):
+        """ x= (N, L) tensor listing spin configurations.
+            Returns: (N,) tensor of amplitudes"""
+        if len(x.shape)==1:
+            x = x.unsqueeze(0)
+        N = x.shape[0]
+        contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
+        m = self.get_local_matrix(0, x[:,0]).apply_mul(
+                                            self.get_local_matrix(1,x[:,1]),
+                                            contractor)
+        for ii in range(self.L-3):
+            m = m.apply_mul(self.get_local_matrix(ii+2, x[:,ii+2]),
+                                            contractor)
+
+        a = m.apply_mul(self.get_local_matrix(self.L-1, x[:,self.L-1]),
+                                        contractor)
+        return a.view(N)
+
+    def prob_unnormalized(self, x):
+        a = self.amplitude(x)
+        return a * a
+
+    def nll_cost(self, x):
+        return - self.prob_unnormalized(x).log().mean() + self.norm().log()
+
+    def prob_normalized(self, x):
+        return self.prob_unnormalized(x) / self.norm()
