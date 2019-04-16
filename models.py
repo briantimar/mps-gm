@@ -2,11 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-def dag(tensor):
-    return torch.transpose(conj(tensor), 0, 1)
-
-def conj(tensor):
-    return tensor
 
 class SingleBasisMPS(nn.Module):
     """ A matrix product state ..."""
@@ -93,14 +88,22 @@ class SingleBasisMPS(nn.Module):
 class ComplexTensor:
 
     def __init__(self, real, imag):
+        assert real.shape == imag.shape
         self.real = real
         self.imag = imag
 
     def apply_mul(self, other, mul_op):
+        print(self.shape, other.shape)
         r = mul_op(self.real, other.real) - mul_op(self.imag, other.imag)
         i = mul_op(self.real, other.imag) + mul_op(self.imag, other.real)
         return ComplexTensor(r,i)
 
+    @property
+    def shape(self):
+        return self.real.shape
+
+    def conj(self):
+        return ComplexTensor(self.real, -self.imag)
 
 class MPS(nn.Module):
     """ MPS with complex amplitudes """
@@ -140,3 +143,19 @@ class MPS(nn.Module):
         for t in self.parameters():
             with torch.no_grad():
                 t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
+
+
+    def norm(self):
+        init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
+        spin_contractor = lambda x, y: torch.einsum('sik,sjl->ijkl', x, y)
+        bulk_contractor = lambda x, y: torch.einsum('ij,ijkl->kl', x, y)
+
+        cont = self.left_tensor.apply_mul(self.left_tensor.conj(), init_contractor)
+        bc = self.bulk_tensor.apply_mul(self.bulk_tensor.conj(), spin_contractor)
+        rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
+
+        for site in range(self.L-2):
+            cont = cont.apply_mul(bc, bulk_contractor)
+
+        cont = cont.apply_mul(rc, bulk_contractor)
+        return cont
