@@ -16,7 +16,7 @@ class SingleBasisMPS(nn.Module):
         local_dim = dimensionality of each local hilbert space
         bond_dimension = uniform bond dimension"""
         super().__init__()
-        assert L >= 3
+
         self.L = L
         self.local_dim = local_dim
         self.bond_dim = bond_dim
@@ -87,4 +87,56 @@ class SingleBasisMPS(nn.Module):
         return - self.prob_unnormalized(x).log().mean() + self.norm().log()
 
     def prob_normalized(self, x):
-        return self.prob_unnormalized(x) / self.norm().sqrt()
+        return self.prob_unnormalized(x) / self.norm()
+
+
+class ComplexTensor:
+
+    def __init__(self, real, imag):
+        self.real = real
+        self.imag = imag
+
+    def apply_mul(self, other, mul_op):
+        r = mul_op(self.real, other.real) - mul_op(self.imag, other.imag)
+        i = mul_op(self.real, other.imag) + mul_op(self.imag, other.real)
+        return ComplexTensor(r,i)
+
+
+class MPS(nn.Module):
+    """ MPS with complex amplitudes """
+
+    def __init__(self, L, local_dim, bond_dim):
+        """ L =  size of the physical system
+        local_dim = dimensionality of each local hilbert space
+        bond_dimension = uniform bond dimension"""
+        super().__init__()
+
+        self.L = L
+        self.local_dim = local_dim
+        self.bond_dim = bond_dim
+        self.build_tensors()
+        self.init_tensors()
+
+    def build_tensors(self):
+        def build(shape):
+            return nn.Parameter(torch.randn(*shape, requires_grad=True))
+
+        bulk_shape = (self.local_dim, self.bond_dim, self.bond_dim)
+        left_shape = (self.local_dim, 1, self.bond_dim)
+        right_shape = (self.local_dim, self.bond_dim, 1)
+
+        self.bulk_r = build(bulk_shape)
+        self.bulk_i = build(bulk_shape)
+        self.left_r = build(left_shape)
+        self.left_i = build(left_shape)
+        self.right_r = build(right_shape)
+        self.right_i = build(right_shape)
+
+        self.bulk_tensor = ComplexTensor(self.bulk_r, self.bulk_i)
+        self.left_tensor = ComplexTensor(self.left_r, self.left_i)
+        self.right_tensor = ComplexTensor(self.right_r, self.right_i)
+
+    def init_tensors(self):
+        for t in self.parameters():
+            with torch.no_grad():
+                t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
