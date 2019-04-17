@@ -125,8 +125,150 @@ class ComplexTensor:
     def size(self, i):
         return self.real.size(i)
 
-class UniformMPS(nn.Module):
+
+class MPS(nn.Module):
     """ MPS with complex amplitudes """
+
+    def __init__(self, L, local_dim, bond_dim):
+        """ L =  size of the physical system
+        local_dim = dimensionality of each local hilbert space
+        bond_dimension = uniform bond dimension"""
+        super().__init__()
+        self.L = L
+        self.local_dim = local_dim
+        self.bond_dim = bond_dim
+        self.build_tensors()
+        self.init_tensors()
+
+    def build_tensors(self):
+        """Create the site tensors which define the MPS"""
+        def build(shape):
+            return nn.Parameter(torch.randn(*shape, requires_grad=True))
+
+        #shape of tensors in the bulk and at the edges of the MPS
+        bulk_shape = (self.local_dim, self.bond_dim, self.bond_dim)
+        left_shape = (self.local_dim, 1, self.bond_dim)
+        right_shape = (self.local_dim, self.bond_dim, 1)
+
+        self.tensors = []
+
+        #build edge tensors
+        self.left_r = build(left_shape)
+        self.left_i = build(left_shape)
+        self.right_r = build(right_shape)
+        self.right_i = build(right_shape)
+
+        self.left_tensor = ComplexTensor(self.left_r, self.left_i)
+        self.right_tensor = ComplexTensor(self.right_r, self.right_i)
+
+        self.tensors.append(self.left_tensor)
+        #each site has its own tensor
+        for __ in range(self.L-2):
+            bulk_r, bulk_i = build(bulk_shape), build(bulk_shape)
+            self.tensors.append( ComplexTensor(bulk_r, bulk_i))
+        self.tensors.append(self.right_tensor)
+
+    def init_tensors(self):
+        """ Initialize all tensors, with normally-distributed values
+            (square-root normalization prevents the state norm from blowing up)"""
+        for t in self.parameters():
+            with torch.no_grad():
+                t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
+
+    def get_local_tensor(self, site_index):
+        """ Returns the (three-index) tensor living at a particular physical index."""
+        if (site_index <0) or (site_index >= self.L):
+            raise ValueError("Invalid site index")
+        return self.tensors[site_index]
+
+
+    def norm(self):
+        """Compute the norm <psi|psi> of the MPS"""
+        #contracts the left edge of the MPS
+        init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
+        #contracts the spin index of two tensors
+        spin_contractor = lambda x, y: torch.einsum('sik,sjl->ijkl', x, y)
+        #contracts accumulated matrix with spin-contracted tensor
+        bulk_contractor = lambda x, y: torch.einsum('ij,ijkl->kl', x, y)
+
+        #begin contraction with the left edge of the mps
+        cont = self.left_tensor.apply_mul(self.left_tensor.conj(), init_contractor)
+
+        # spin-contracted right tensors, used at the end
+        rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
+
+        for site in range(1,self.L-1):
+            bulk_tensor = self.get_local_tensor(site)
+            bulk_contracted = bulk_tensor.apply_mul(bulk_tensor, spin_contractor)
+            cont = cont.apply_mul(bulk_contracted, bulk_contractor)
+
+        cont = cont.apply_mul(rc, bulk_contractor)
+        return cont.squeeze().real
+
+
+    def get_local_matrix(self, site_index, spin_index, rotation=None):
+        """spin_index = an (N,) tensor of spin configurations.
+            rotation: if not None, (N,d,d,) complex tensor
+             defining single-qubit unitaries to contract
+            with local tensors before returning. (d= localdim)
+            returns: (N,D,D) tensor holding local matrices for each spin
+            configuration. (D = bonddim)"""
+        #shape (local_dim, D, D)
+        local_tensor = self.get_local_tensor(site_index)
+
+        if rotation is not None:
+            if spin_index.size(0) != rotation.size(0):
+                raise ValueError("Index tensor incompatible with rotations")
+            N = spin_index.size(0)
+            contractor = lambda x, y: torch.einsum('ast,tij->asij', x, y)
+            #shape (N, local_dim, D, D)
+            local_tensor = rotation.apply_mul(local_tensor, contractor)
+            #shape (N, D, D)
+            local_matrix = local_tensor[range(N), spin_index, ...]
+        else:
+            local_matrix = local_tensor[spin_index, ...]
+        return local_matrix
+
+    def amplitude(self, x, rotation=None):
+        """ x= (N, L) tensor listing spin configurations.
+        rotations: (N, L,d, d) complextensor of local unitaries applied.
+            Returns: (N,) tensor of amplitudes.
+            """
+        if len(x.shape)==1:
+            x = x.unsqueeze(0)
+        N = x.shape[0]
+        contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
+
+        def rotated_local_matrix(site_index):
+            rot=None if rotation is None else rotation[:, site_index, ...]
+            return self.get_local_matrix(site_index, x[:, site_index],
+                                            rotation=rot)
+        m0 = rotated_local_matrix(0)
+        m1 = rotated_local_matrix(1)
+        m = m0.apply_mul( m1,contractor)
+
+        if self.L > 2:
+            for ii in range(self.L-3):
+                mbulk = rotated_local_matrix(ii+2)
+                m = m.apply_mul(mbulk, contractor)
+
+            a = m.apply_mul(rotated_local_matrix(self.L-1),contractor)
+        return a.view(N)
+
+    def prob_unnormalized(self, x,rotation=None):
+        a = self.amplitude(x, rotation=rotation)
+        return (a * a.conj()).real
+
+    def nll_loss(self, x, rotation=None):
+        return - self.prob_unnormalized(x,rotation=rotation).log().mean() + self.norm().log()
+
+    def prob_normalized(self, x, rotation=None):
+        return self.prob_unnormalized(x,rotation=rotation) / self.norm()
+
+
+
+class UniformMPS(nn.Module):
+    """ MPS with complex amplitudes, and uniform bulk matrix """
 
     def __init__(self, L, local_dim, bond_dim):
         """ L =  size of the physical system
