@@ -125,7 +125,7 @@ class ComplexTensor:
     def size(self, i):
         return self.real.size(i)
 
-class MPS(nn.Module):
+class UniformMPS(nn.Module):
     """ MPS with complex amplitudes """
 
     def __init__(self, L, local_dim, bond_dim):
