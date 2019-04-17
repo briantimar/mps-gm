@@ -194,13 +194,14 @@ class MPS(nn.Module):
         #begin contraction with the left edge of the mps
         cont = self.left_tensor.apply_mul(self.left_tensor.conj(), init_contractor)
 
-        # spin-contracted right tensors, used at the end
-        rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
-
         for site in range(1,self.L-1):
             bulk_tensor = self.get_local_tensor(site)
-            bulk_contracted = bulk_tensor.apply_mul(bulk_tensor, spin_contractor)
+            bulk_contracted = bulk_tensor.apply_mul(bulk_tensor.conj(),
+                                                        spin_contractor)
             cont = cont.apply_mul(bulk_contracted, bulk_contractor)
+
+        # spin-contracted right tensors, used at the end
+        rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
 
         cont = cont.apply_mul(rc, bulk_contractor)
         return cont.squeeze().real
