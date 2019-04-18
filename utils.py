@@ -20,7 +20,7 @@ def svd_push_right(Aleft, Aright):
     return Aleft_new, Aright_new
     
 def svd_push_left(Aleft, Aright):
-     """Perform SVD on the right site matrix, and push singular values into the left site matrix.
+    """Perform SVD on the right site matrix, and push singular values into the left site matrix.
         This results in the right site-matrix being right-normalized.
         Aleft: complex numpy array, shape (local_dim, bond_dim1, bond_dim2)
         Aright: complex numpy array, shape (local_dim, bond_dim2, bond_dim3)"""
@@ -29,7 +29,7 @@ def svd_push_left(Aleft, Aright):
     #pull spin index to the right
     Aright = np.reshape(np.swapaxes(Aright, 0,1), (D2, local_dim * D3))
     #perform SVD on the D2-index
-    u,s,v = np.linalg.svd(B, full_matrices=False)
+    u,s,v = np.linalg.svd(Aright, full_matrices=False)
     #number of singular values
     k=s.shape[0]
     #new right-matrix, with shape local_dim, k, D3
