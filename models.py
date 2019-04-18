@@ -186,24 +186,22 @@ class MPS(nn.Module):
         """Compute the norm <psi|psi> of the MPS"""
         #contracts the left edge of the MPS
         init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
-        #contracts the spin index of two tensors
-        spin_contractor = lambda x, y: torch.einsum('sik,sjl->ijkl', x, y)
-        #contracts accumulated matrix with spin-contracted tensor
-        bulk_contractor = lambda x, y: torch.einsum('ij,ijkl->kl', x, y)
+        #contract a single physical index between accumulated tensor and site tensor
+        #contract the upper site tensor...
+        upper_phys_contractor = lambda acc, site: torch.einsum('ij,sik->skj',acc, site)
+        #and then the lower
+        lower_phys_contractor = lambda acc, site: torch.einsum('skj,sjl->kl',acc,site)
 
         #begin contraction with the left edge of the mps
         cont = self.left_tensor.apply_mul(self.left_tensor.conj(), init_contractor)
 
-        for site in range(1,self.L-1):
+        for site in range(1,self.L):
             bulk_tensor = self.get_local_tensor(site)
-            bulk_contracted = bulk_tensor.apply_mul(bulk_tensor.conj(),
-                                                        spin_contractor)
-            cont = cont.apply_mul(bulk_contracted, bulk_contractor)
+            #absorb upper site tensor
+            cont = cont.apply_mul(bulk_tensor, upper_phys_contractor)
+            #absorb lower site tensor, contract over spin
+            cont = cont.apply_mul(bulk_tensor.conj(), lower_phys_contractor)
 
-        # spin-contracted right tensors, used at the end
-        rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
-
-        cont = cont.apply_mul(rc, bulk_contractor)
         return cont.squeeze().real
 
 
