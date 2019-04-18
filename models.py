@@ -3,6 +3,9 @@ import torch
 import torch.nn as nn
 
 
+
+
+
 class SingleBasisMPS(nn.Module):
     """ A matrix product state ..."""
 
@@ -126,6 +129,7 @@ class ComplexTensor:
         return self.real.size(i)
 
 
+
 class MPS(nn.Module):
     """ MPS with complex amplitudes """
 
@@ -170,7 +174,7 @@ class MPS(nn.Module):
 
     def init_tensors(self):
         """ Initialize all tensors, with normally-distributed values
-            (square-root normalization prevents the state norm from blowing up)"""
+            """
         for t in self.parameters():
             with torch.no_grad():
                 t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
