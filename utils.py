@@ -70,3 +70,36 @@ def svd_push_left(Aleft, Aright, cutoff=1e-8, max_sv_to_keep=None):
     Aleft_new = np.einsum('sij,jq,q->siq', Aleft,u,singular_vals)
 
     return Aleft_new, Aright_new
+
+def split_two_site(A, normalize='left', cutoff=1e-8, max_sv_to_keep=None):
+    """Perform SVD on two-site tensor A, and normalize either the left or right tensor 
+    of the result.
+    A: two-site complex tensor, shape (local_dim, local_dim, D1, D2) 
+        (left and right spin indices, and left and right bond dim resp.) 
+    
+        Returns: single-site tensors Aleft, Aright
+        shape(Aleft) = (local_dim, D1, k)
+        shape(Aright) = (local_dim, k, D2)
+        k = number of singular values retained."""
+
+    _, local_dim, D1, D2 = A.shape
+    if A.shape[0] != local_dim:
+        raise ValueError("invalid shape {0} for two-site tensor".format(A.shape))
+    if normalize not in ['left', 'right']:
+        raise ValueError("Invalid normalization")
+    #bend the spin indices over
+    A = np.swapaxes(A, 1,2)
+    A = np.reshape(A, (local_dim * D1, local_dim * D2))
+    u, s, v = svd(A,cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
+    k = len(s)
+    if normalize == 'left':
+        Aleft = np.reshape(u, (local_dim, D1, k))
+        Aright = np.reshape(np.einsum('q,qi->qi',s,v), (k, local_dim, D2))
+        Aright = np.swapaxes(Aright, 0,1)
+    else:
+        Aright = np.swapaxes(np.reshape(v, (k, local_dim, D2)), 0,1)
+        Aleft = np.reshape(np.einsum('iq,q->iq',u,s), (local_dim, D1, k))
+    
+    return Aleft, Aright
+
+    
