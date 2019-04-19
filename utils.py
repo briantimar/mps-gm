@@ -18,7 +18,7 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
     u,s,v=np.linalg.svd(A, full_matrices=False)
     singular_vals = np.diag(s)
     #keep only singular values above cutoff
-    if cutoff:
+    if cutoff is not None:
         singular_vals = singular_vals[singular_vals>cutoff]
     #if a max number of eigvalues is requested, enforce that too
     if max_sv_to_keep is not None:

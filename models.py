@@ -148,9 +148,7 @@ class MPS(nn.Module):
         #the site to which the mps is gauged, if any
         self.gauge_index = None
 
-        for t in self.tensors:
-            print(t.shape)
-        # self.normalize()
+        self.normalize()
 
     def build_tensors(self):
         """Create the site tensors which define the MPS"""
