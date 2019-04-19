@@ -148,8 +148,9 @@ class MPS(nn.Module):
         #the site to which the mps is gauged, if any
         self.gauge_index = None
 
-        self.gauge_to(0)
-        
+        for t in self.tensors:
+            print(t.shape)
+        # self.normalize()
 
     def build_tensors(self):
         """Create the site tensors which define the MPS"""
@@ -162,29 +163,35 @@ class MPS(nn.Module):
         right_shape = (self.local_dim, self.bond_dim, 1)
 
         self.tensors = []
+        self.real_tensors = []
 
         #build edge tensors
-        self.left_r = build(left_shape)
-        self.left_i = build(left_shape)
-        self.right_r = build(right_shape)
-        self.right_i = build(right_shape)
+        left_r = build(left_shape)
+        left_i = build(left_shape)
+        right_r = build(right_shape)
+        right_i = build(right_shape)
 
-        self.left_tensor = ComplexTensor(self.left_r, self.left_i)
-        self.right_tensor = ComplexTensor(self.right_r, self.right_i)
+        left_tensor = ComplexTensor(left_r, left_i)
+        right_tensor = ComplexTensor(right_r, right_i)
 
-        self.tensors.append(self.left_tensor)
+        self.tensors.append(left_tensor)
+        self.real_tensors.append(dict(real=left_r,imag=left_i))
         #each site has its own tensor
         for __ in range(self.L-2):
             bulk_r, bulk_i = build(bulk_shape), build(bulk_shape)
             self.tensors.append( ComplexTensor(bulk_r, bulk_i))
-        self.tensors.append(self.right_tensor)
+            self.real_tensors.append(dict(real=bulk_r, imag=bulk_i))
+        self.tensors.append(right_tensor)
+        self.real_tensors.append(dict(real=right_r, imag=right_i))
 
-    def init_tensors(self, init=1e-4):
+    def init_tensors(self):
         """ Initialize all tensors, with normally-distributed values
             """
-        for t in self.parameters():
+        init = 1.0 / np.power(self.bond_dim**2 * self.local_dim, .25)
+        for t in self.tensors:
             with torch.no_grad():
-                t.normal_(0, init)
+                t.real.normal_(0, init)
+                t.imag.normal_(0, init)
 
     def get_local_tensor(self, site_index):
         """ Returns the (three-index) tensor living at a particular physical index."""
@@ -210,7 +217,8 @@ class MPS(nn.Module):
         lower_phys_contractor = lambda acc, site: torch.einsum('skj,sjl->kl',acc,site)
 
         #begin contraction with the left edge of the mps
-        cont = self.left_tensor.apply_mul(self.left_tensor.conj(), init_contractor)
+        left_tensor = self.get_local_tensor(0)
+        cont = left_tensor.apply_mul(left_tensor.conj(), init_contractor)
 
         for site in range(1,self.L):
             bulk_tensor = self.get_local_tensor(site)
@@ -231,7 +239,6 @@ class MPS(nn.Module):
         """ Ensures that a gauge index exists"""
         if self.gauge_index is None:
             self.gauge_to(0)
-
 
     def normalize(self):
         """normalize the MPS"""
@@ -331,6 +338,31 @@ class MPS(nn.Module):
         else:
             local_matrix = local_tensor[spin_index, ...]
         return local_matrix
+
+    def contract_interval(self, spin_config, start_index, stop_index, rotation=None):
+        """Contract a specific configuration of local tensors on the interval [start_index, stop_index)
+             spin_config = (N, L) tensor listing spin configurations.
+            rotations: (N, L, d, d) complextensor of local unitaries applied.
+            Returns: (N,D1, D2) tensor of amplitudes, D1 and D2 being the dangling bond dimensions
+            of the tensors at the edges of the interval."""
+
+        if len(spin_config.shape) == 1:
+            spin_config = spin_config.unsqueeze(0)
+
+        def contractor(x, y):
+            return torch.einsum('sij,sjk->sik', x, y)
+
+        def rotated_local_matrix(site_index):
+            rot = None if rotation is None else rotation[:, site_index, ...]
+            return self.get_local_matrix(site_index, spin_config[:, site_index],
+                                         rotation=rot)
+
+        m = rotated_local_matrix(start_index)
+        for site_index in range(start_index+1, stop_index):
+            m = m.apply_mul( rotated_local_matrix(site_index), 
+                                contractor)
+        return m
+
 
     def amplitude(self, x, rotation=None):
         """ x= (N, L) tensor listing spin configurations.
