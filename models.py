@@ -407,12 +407,12 @@ class MPS(nn.Module):
                 raise ValueError("Invalid index for twosite gradient")
 
             if site_index == 0:
-                left_contracted = torch.ones((N,1,1))
+                left_contracted = ComplexTensor(torch.ones((N,1,1)), torch.zeros((N,1,1)))
             else:
                 #shape (N, 1, D1)
                 left_contracted = self.contract_interval(spin_config,0,site_index)
             if site_index == self.L-2:
-                right_contracted = torch.ones((N,1,1))
+                right_contracted = ComplexTensor(torch.ones((N,1,1)), torch.zeros((N,1,1)))
             else:
                 #shape (N, D2, 1)
                 right_contracted = self.contract_interval(spin_config, site_index +1, self.L)
