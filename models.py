@@ -362,31 +362,15 @@ class MPS(nn.Module):
         return m
 
 
-    def amplitude(self, x, rotation=None):
-        """ x= (N, L) tensor listing spin configurations.
+    def amplitude(self, spin_config, rotation=None):
+        """ spin_config= (N, L) tensor listing spin configurations.
         rotations: (N, L,d, d) complextensor of local unitaries applied.
-            Returns: (N,) tensor of amplitudes.
+            Returns: (N,) tensor of amplitudes, one for each spin config.
             """
-        if len(x.shape)==1:
-            x = x.unsqueeze(0)
-        N = x.shape[0]
-        contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
-
-        def rotated_local_matrix(site_index):
-            rot=None if rotation is None else rotation[:, site_index, ...]
-            return self.get_local_matrix(site_index, x[:, site_index],
-                                            rotation=rot)
-        m0 = rotated_local_matrix(0)
-        m1 = rotated_local_matrix(1)
-        m = m0.apply_mul( m1,contractor)
-
-        if self.L > 2:
-            for ii in range(self.L-3):
-                mbulk = rotated_local_matrix(ii+2)
-                m = m.apply_mul(mbulk, contractor)
-
-            a = m.apply_mul(rotated_local_matrix(self.L-1),contractor)
-        return a.view(N)
+        if len(spin_config.shape) == 1:
+            spin_config = spin_config.unsqueeze(0)
+        N = spin_config.shape[0]
+        return self.contract_interval(spin_config, 0, self.L, rotation=rotation).view(N)
 
     def prob_unnormalized(self, x,rotation=None):
         a = self.amplitude(x, rotation=rotation)
