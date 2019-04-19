@@ -2,9 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-
-
-
+#tools for SVD -- normalization and breaking two-site tensors
+from utils import svd_push_left, svd_push_right, split_two_site
 
 class SingleBasisMPS(nn.Module):
     """ A matrix product state ..."""
@@ -128,6 +127,9 @@ class ComplexTensor:
     def size(self, i):
         return self.real.size(i)
 
+    def numpy(self):
+        return self.real.detach().numpy() + 1j * self.imag.detach().numpy()
+
 
 
 class MPS(nn.Module):
@@ -207,7 +209,43 @@ class MPS(nn.Module):
             cont = cont.apply_mul(bulk_tensor.conj(), lower_phys_contractor)
 
         return cont.squeeze().real
+    
+    def set_local_tensor(self, site_index, A):
+        """Set tensor at specifed site index equal to A.
+            A: a ComplexTensor"""
+        self.tensors[site_index].real.data = A.real.data
+        self.tensors[site_index].imag.data = A.imag.data
 
+    def set_local_tensor_from_numpy(self, site_index, A):
+        ct = ComplexTensor(torch.tensor(A.real), torch.tensor(A.imag))
+        self.set_local_tensor(site_index, ct)
+
+    def left_normalize_at(self, site_index, cutoff=1e-16, max_sv_to_keep=None):
+        """ Apply a single SVD at the bond (site_index, site_index +1), resulting 
+            in left-normalization at site_index."""
+        if site_index <0 or site_index>= self.L-1:
+            raise ValueError("invalid index %d for left-normalization"%site_index)
+        Aleft = self.get_local_tensor(site_index).numpy()
+        Aright = self.get_local_tensor(site_index+1).numpy()
+        Aleft, Aright = svd_push_right(Aleft, Aright,
+                        cutoff=cutoff, max_sv_to_keep=max_sv_to_keep)
+        self.set_local_tensor_from_numpy(site_index, Aleft)
+        self.set_local_tensor_from_numpy(site_index+1, Aright)
+    
+    def right_normalize_at(self, site_index, cutoff=1e-16, max_sv_to_keep=None):
+        """ Apply a single SVD at the bond (site_index-1, site_index), resulting 
+            in right-normalization at site_index ."""
+        if site_index == 0 or site_index > self.L-1:
+            raise ValueError("invalid index %d for right-normalization"%site_index)
+        Aleft = self.get_local_tensor(site_index-1).numpy()
+        Aright = self.get_local_tensor(site_index).numpy()
+        Aleft, Aright = svd_push_left(Aleft, Aright,
+                        cutoff=cutoff, max_sv_to_keep=max_sv_to_keep)
+        self.set_local_tensor_from_numpy(site_index-1, Aleft)
+        self.set_local_tensor_from_numpy(site_index, Aright)
+        
+    
+    
 
     def get_local_matrix(self, site_index, spin_index, rotation=None):
         """spin_index = an (N,) tensor of spin configurations.

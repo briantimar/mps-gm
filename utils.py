@@ -30,7 +30,7 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
     v = v[:k, :]
     return u, singular_vals, v
 
-def svd_push_right(Aleft, Aright, cutoff=1e-8, max_sv_to_keep=None):
+def svd_push_right(Aleft, Aright, cutoff=1e-16, max_sv_to_keep=None):
     """Perform SVD on the left site matrix, and push singular values into the right site matrix.
         This results in the left site-matrix being left-normalized.
         Aleft: complex numpy array, shape (local_dim, bond_dim1, bond_dim2)
@@ -51,7 +51,7 @@ def svd_push_right(Aleft, Aright, cutoff=1e-8, max_sv_to_keep=None):
     Aright_new = np.einsum('q,qi,sij->sqj',singular_vals,v,Aright)
     return Aleft_new, Aright_new
     
-def svd_push_left(Aleft, Aright, cutoff=1e-8, max_sv_to_keep=None):
+def svd_push_left(Aleft, Aright, cutoff=1e-16, max_sv_to_keep=None):
     """Perform SVD on the right site matrix, and push singular values into the left site matrix.
         This results in the right site-matrix being right-normalized.
         Aleft: complex numpy array, shape (local_dim, bond_dim1, bond_dim2)
