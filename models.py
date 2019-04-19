@@ -145,6 +145,11 @@ class MPS(nn.Module):
         self.bond_dim = bond_dim
         self.build_tensors()
         self.init_tensors()
+        #the site to which the mps is gauged, if any
+        self.gauge_index = None
+
+        self.gauge_to(0)
+        
 
     def build_tensors(self):
         """Create the site tensors which define the MPS"""
@@ -174,12 +179,12 @@ class MPS(nn.Module):
             self.tensors.append( ComplexTensor(bulk_r, bulk_i))
         self.tensors.append(self.right_tensor)
 
-    def init_tensors(self):
+    def init_tensors(self, init=1e-4):
         """ Initialize all tensors, with normally-distributed values
             """
         for t in self.parameters():
             with torch.no_grad():
-                t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
+                t.normal_(0, init)
 
     def get_local_tensor(self, site_index):
         """ Returns the (three-index) tensor living at a particular physical index."""
@@ -187,9 +192,15 @@ class MPS(nn.Module):
             raise ValueError("Invalid site index")
         return self.tensors[site_index]
 
+    def rescale_site_tensor(self, site_index):
+        """Divides site tensor at spec'd index by square root of its contraction"""
+        N = self.site_contraction(site_index).item()
+        A = self.get_local_tensor(site_index)
+        self.set_local_tensor(site_index, ComplexTensor(A.real/np.sqrt(N), 
+                                                        A.imag/np.sqrt(N)))
 
-    def norm(self):
-        """Compute the norm <psi|psi> of the MPS"""
+    def norm_full(self):
+        """Compute the norm <psi|psi> of the MPS by contraction of the full tensor"""
         #contracts the left edge of the MPS
         init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
         #contract a single physical index between accumulated tensor and site tensor
@@ -244,8 +255,41 @@ class MPS(nn.Module):
         self.set_local_tensor_from_numpy(site_index-1, Aleft)
         self.set_local_tensor_from_numpy(site_index, Aright)
         
+    def gauge_to(self, site_index, cutoff=1e-16, max_sv_to_keep=None):
+        """Left-normalizes all tensors to the left of site_index; right-normalizes all
+        tensors to the right."""
+        if site_index < 0 or site_index > self.L-1:
+            raise ValueError("invalid index %d" % site_index)
+
+        if self.gauge_index is None:
+            left_norm_range = range(0,site_index)
+            right_norm_range = range(self.L-1, site_index,-1)
+           
+        elif self.gauge_index < site_index:
+            # in this case, right normalization is already taken care of
+            left_norm_range = range(self.gauge_index, site_index)
+            right_norm_range = range(-1)
+
+        elif self.gauge_index > site_index:
+            #in this case, left norm is already taken care of
+            left_norm_range = range(-1)
+            right_norm_range = range(self.gauge_index, site_index, -1)
+        else:
+            left_norm_range = range(-1)
+            right_norm_range = range(-1)
+
+        for i in left_norm_range:
+            self.left_normalize_at(i, cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
+        for i in right_norm_range:
+            self.right_normalize_at(i, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep)
     
+        self.gauge_index = site_index
     
+    def site_contraction(self, site_index):
+        """ Return the contraction of single site tensor with its conjugate."""
+        A = self.get_local_tensor(site_index)
+        contractor = lambda a, aconj: torch.einsum('sij,sij->',a, aconj)
+        return A.apply_mul(A.conj(), contractor)
 
     def get_local_matrix(self, site_index, spin_index, rotation=None):
         """spin_index = an (N,) tensor of spin configurations.
