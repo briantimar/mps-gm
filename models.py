@@ -210,9 +210,9 @@ class MPS(nn.Module):
         init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
         #contract a single physical index between accumulated tensor and site tensor
         #contract the upper site tensor...
-        upper_phys_contractor = lambda acc, site: torch.einsum('ij,sik->skj',acc, site)
+        upper_bond_contractor = lambda acc, site: torch.einsum('ij,sik->skj',acc, site)
         #and then the lower
-        lower_phys_contractor = lambda acc, site: torch.einsum('skj,sjl->kl',acc,site)
+        lower_bond_contractor = lambda acc, site: torch.einsum('skj,sjl->kl',acc,site)
 
         #begin contraction with the left edge of the mps
         left_tensor = self.get_local_tensor(0)
@@ -221,9 +221,9 @@ class MPS(nn.Module):
         for site in range(1,self.L):
             bulk_tensor = self.get_local_tensor(site)
             #absorb upper site tensor
-            cont = cont.apply_mul(bulk_tensor, upper_phys_contractor)
+            cont = cont.apply_mul(bulk_tensor, upper_bond_contractor)
             #absorb lower site tensor, contract over spin
-            cont = cont.apply_mul(bulk_tensor.conj(), lower_phys_contractor)
+            cont = cont.apply_mul(bulk_tensor.conj(), lower_bond_contractor)
 
         return cont.squeeze().real
     
@@ -361,7 +361,6 @@ class MPS(nn.Module):
                                 contractor)
         return m
 
-
     def amplitude(self, spin_config, rotation=None):
         """ spin_config= (N, L) tensor listing spin configurations.
         rotations: (N, L,d, d) complextensor of local unitaries applied.
@@ -371,6 +370,15 @@ class MPS(nn.Module):
             spin_config = spin_config.unsqueeze(0)
         N = spin_config.shape[0]
         return self.contract_interval(spin_config, 0, self.L, rotation=rotation).view(N)
+
+    def merge(self, site_index):
+        """ Contract the two local tensors at site_index, site_index + 1
+        and return the corresponding four-index object, with shape
+        (spin1, spin2, bond1, bond2)"""
+        contractor = lambda al, ar: torch.einsum('sij,tjl->stil', al,ar)
+        al = self.get_local_tensor(site_index)
+        ar = self.get_local_tensor(site_index+1)
+        return al.apply_mul(ar, contractor)
 
     def prob_unnormalized(self, x,rotation=None):
         a = self.amplitude(x, rotation=rotation)
@@ -382,6 +390,54 @@ class MPS(nn.Module):
     def prob_normalized(self, x, rotation=None):
         return self.prob_unnormalized(x,rotation=rotation) / self.norm()
 
+    ### methods for computing various gradients
+    def grad_twosite_psi(self, site_index, spin_config, 
+                                            rotations=None):
+        """Compute the gradient of Psi(spin_config) (with the given local
+        unitaries applied) with respect to the two-site merged tensor at (site_index, site_index + 1)
+        Returns: complex numpy array, indexing as: (batch, spin1, spin2, bond1, bond2), shape
+                    (N, local_dim, local_dim, bond1, bond2) 
+            spin_config: (N, L) int tensor of spin configurations
+            rotations:(N, L, d, d) complextensor of local unitaries applied."""
+        with torch.no_grad():
+            if len(spin_config.shape) == 1:
+                spin_config = spin_config.unsqueeze(0)
+            N = spin_config.shape[0]
+            if site_index < 0 or site_index >= self.L-1:
+                raise ValueError("Invalid index for twosite gradient")
+
+            if site_index == 0:
+                left_contracted = torch.ones((N,1,1))
+            else:
+                #shape (N, 1, D1)
+                left_contracted = self.contract_interval(spin_config,0,site_index)
+            if site_index == self.L-2:
+                right_contracted = torch.ones((N,1,1))
+            else:
+                #shape (N, D2, 1)
+                right_contracted = self.contract_interval(spin_config, site_index +1, self.L)
+            
+            D1 = left_contracted.shape[-1]
+            D2 = right_contracted.shape[-2]
+            # grad_shape = (N, self.local_dim, self.local_dim, D1, D2 )
+            left_contracted = left_contracted.view(N,1, 1, D1, 1)
+            right_contracted = right_contracted.view(N,1, 1, 1, D2)
+            if rotations is None:
+                U1r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
+                U2r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
+                U1i = torch.zeros_like(U1r)
+                U2i = torch.zeros_like(U2r)
+                U1 = ComplexTensor(U1r, U1i)
+                U2 = ComplexTensor(U2r, U2i)
+            U1 = U1.view(N, self.local_dim, self.local_dim, 1, 1)
+            U2 = U2.view(N, self.local_dim, self.local_dim, 1, 1)
+           
+            return left_contracted * right_contracted * U1 * U2
+
+
+
+        
+        
 
 
 class UniformMPS(nn.Module):
