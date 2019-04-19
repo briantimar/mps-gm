@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import warnings
 
 #tools for SVD -- normalization and breaking two-site tensors
 from utils import svd_push_left, svd_push_right, split_two_site
@@ -412,7 +413,8 @@ class MPS(nn.Module):
                 #shape (N, 1, D1)
                 left_contracted = self.contract_interval(spin_config,0,site_index)
             if site_index == self.L-2:
-                right_contracted = ComplexTensor(torch.ones((N,1,1)), torch.zeros((N,1,1)))
+                right_contracted = ComplexTensor(
+                    torch.ones((N, 1, 1)), torch.zeros((N, 1, 1)))
             else:
                 #shape (N, D2, 1)
                 right_contracted = self.contract_interval(spin_config, site_index +1, self.L)
@@ -434,6 +436,26 @@ class MPS(nn.Module):
            
             return left_contracted * right_contracted * U1 * U2
 
+    def grad_twosite_norm(self, site_index):
+        """ Compute the grad of the norm WRT two-site blob at specified index. 
+        First checks that mps is gauged to the relevant site.
+        Returns: (N, loc_dim, loc_dim, D1, D2) ComplexTensor"""
+        if self.gauge_index != site_index:
+            warnings.warn("MPS should be gauged to blob site before calling norm gradient")
+            self.gauge_to(site_index)
+        return self.merge(site_index).conj()
+
+    def set_sites_from_twosite(self, site_index, twosite,
+                                    cutoff=1e-16, max_sv_to_keep=None, 
+                                    normalize='left'):
+        """Update the MPS local tensors at site_index, site_index +1 from twosite blob provided.
+        The blob is SVD'd with spec truncation parameters, and either the left or right tensor is normalized.
+        Local tensors are then overwritten with the SVD results.
+        twosite: (local_dim, local_dim, bond_dim, bond_dim) complex numpy array"""
+        Aleft, Aright = split_two_site(twosite,normalize=normalize,
+                                            cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
+        self.set_local_tensor_from_numpy(site_index, Aleft)
+        self.set_local_tensor_from_numpy(site_index, Aright)
 
 
         

@@ -74,7 +74,7 @@ def svd_push_left(Aleft, Aright, cutoff=1e-16, max_sv_to_keep=None):
 def split_two_site(A, normalize='left', cutoff=1e-8, max_sv_to_keep=None):
     """Perform SVD on two-site tensor A, and normalize either the left or right tensor 
     of the result.
-    A: two-site complex tensor, shape (local_dim, local_dim, D1, D2) 
+    A: two-site complex array, shape (local_dim, local_dim, D1, D2) 
         (left and right spin indices, and left and right bond dim resp.) 
     
         Returns: single-site tensors Aleft, Aright
