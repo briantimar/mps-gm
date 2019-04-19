@@ -488,8 +488,9 @@ class MPS(nn.Module):
         twosite: (local_dim, local_dim, bond_dim, bond_dim) complex numpy array"""
         Aleft, Aright = split_two_site(twosite,normalize=normalize,
                                             cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
+
         self.set_local_tensor_from_numpy(site_index, Aleft)
-        self.set_local_tensor_from_numpy(site_index, Aright)
+        self.set_local_tensor_from_numpy(site_index+1, Aright)
         
         
 
