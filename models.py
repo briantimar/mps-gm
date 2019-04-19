@@ -393,13 +393,13 @@ class MPS(nn.Module):
 
     ### methods for computing various gradients
     def grad_twosite_psi(self, site_index, spin_config, 
-                                            rotations=None):
+                                            rotation=None):
         """Compute the gradient of Psi(spin_config) (with the given local
         unitaries applied) with respect to the two-site merged tensor at (site_index, site_index + 1)
         Returns: complex numpy array, indexing as: (batch, spin1, spin2, bond1, bond2), shape
                     (N, local_dim, local_dim, bond1, bond2) 
             spin_config: (N, L) int tensor of spin configurations
-            rotations:(N, L, d, d) complextensor of local unitaries applied."""
+            rotation:(N, L, d, d) complextensor of local unitaries applied."""
         with torch.no_grad():
             if len(spin_config.shape) == 1:
                 spin_config = spin_config.unsqueeze(0)
@@ -424,13 +424,18 @@ class MPS(nn.Module):
             # grad_shape = (N, self.local_dim, self.local_dim, D1, D2 )
             left_contracted = left_contracted.view(N,1, 1, D1, 1)
             right_contracted = right_contracted.view(N,1, 1, 1, D2)
-            if rotations is None:
+            if rotation is None:
                 U1r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
                 U2r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
                 U1i = torch.zeros_like(U1r)
                 U2i = torch.zeros_like(U2r)
                 U1 = ComplexTensor(U1r, U1i)
                 U2 = ComplexTensor(U2r, U2i)
+            else:
+                U1 = rotation[range(N), site_index, 
+                            spin_config[:, site_index], :]
+                U2 = rotation[range(N), site_index+1,
+                              spin_config[:, site_index+1], :]
             U1 = U1.view(N, self.local_dim, self.local_dim, 1, 1)
             U2 = U2.view(N, self.local_dim, self.local_dim, 1, 1)
            
@@ -439,11 +444,23 @@ class MPS(nn.Module):
     def grad_twosite_norm(self, site_index):
         """ Compute the grad of the norm WRT two-site blob at specified index. 
         First checks that mps is gauged to the relevant site.
-        Returns: (N, loc_dim, loc_dim, D1, D2) ComplexTensor"""
+        Returns: (loc_dim, loc_dim, D1, D2) ComplexTensor"""
         if self.gauge_index != site_index:
             warnings.warn("MPS should be gauged to blob site before calling norm gradient")
             self.gauge_to(site_index)
         return self.merge(site_index).conj()
+
+    def grad_twosite_logprob(self, site_index, spin_config, rotation=None):
+        """ Compute the gradient of the log probability WRT twosite blob at the specd site.
+            Gradient is averaged over batch dimension."""
+        #gradient of the amplitude WRT blob
+        grad_psi = self.grad_twosite_psi(site_index, spin_config)
+        #gradient of the WF normalization
+        grad_norm = self.grad_twosite_norm(site_index)
+        #amplitudes of the spin configurations
+        amplitude = self.amplitude(spin_config,rotation=rotation)
+        
+
 
     def set_sites_from_twosite(self, site_index, twosite,
                                     cutoff=1e-16, max_sv_to_keep=None, 
@@ -456,8 +473,6 @@ class MPS(nn.Module):
                                             cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
         self.set_local_tensor_from_numpy(site_index, Aleft)
         self.set_local_tensor_from_numpy(site_index, Aright)
-
-
         
         
 
@@ -537,7 +552,7 @@ class UniformMPS(nn.Module):
 
         if rotation is not None:
             if spin_index.size(0) != rotation.size(0):
-                raise ValueError("Index tensor incompatible with rotations")
+                raise ValueError("Index tensor incompatible with rotation")
             N = spin_index.size(0)
             contractor = lambda x, y: torch.einsum('ast,tij->asij', x, y)
             #shape (N, local_dim, D, D)
@@ -550,7 +565,7 @@ class UniformMPS(nn.Module):
 
     def amplitude(self, x, rotation=None):
         """ x= (N, L) tensor listing spin configurations.
-        rotations: (N, L,d, d) complextensor of local unitaries applied.
+        rotation: (N, L,d, d) complextensor of local unitaries applied.
             Returns: (N,) tensor of amplitudes.
             """
         if len(x.shape)==1:
