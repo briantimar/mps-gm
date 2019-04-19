@@ -118,6 +118,12 @@ class ComplexTensor:
     def __mul__(self, other):
         mul_op = lambda x, y: x * y
         return self.apply_mul(other, mul_op)
+    
+    def __div__(self, other):
+        return ComplexTensor(self.real/other, self.imag/other)
+
+    def norm(self):
+        return (self * self.conj()).real
 
     def abs(self):
         return (self * self.conj()).real.sqrt()
@@ -417,7 +423,7 @@ class MPS(nn.Module):
                     torch.ones((N, 1, 1)), torch.zeros((N, 1, 1)))
             else:
                 #shape (N, D2, 1)
-                right_contracted = self.contract_interval(spin_config, site_index +1, self.L)
+                right_contracted = self.contract_interval(spin_config, site_index +2, self.L)
             
             D1 = left_contracted.shape[-1]
             D2 = right_contracted.shape[-2]
@@ -453,13 +459,17 @@ class MPS(nn.Module):
     def grad_twosite_logprob(self, site_index, spin_config, rotation=None):
         """ Compute the gradient of the log probability WRT twosite blob at the specd site.
             Gradient is averaged over batch dimension."""
-        #gradient of the amplitude WRT blob
+        if len(spin_config.shape) == 1:
+                spin_config = spin_config.unsqueeze(0)
+        N = spin_config.shape[0]
+        #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
         grad_psi = self.grad_twosite_psi(site_index, spin_config)
         #gradient of the WF normalization
         grad_norm = self.grad_twosite_norm(site_index)
         #amplitudes of the spin configurations
-        amplitude = self.amplitude(spin_config,rotation=rotation)
-        
+        amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
+
+        return - ((grad_psi * amplitude.conj()) / amplitude.norm()).mean(0) + grad_norm
 
 
     def set_sites_from_twosite(self, site_index, twosite,
