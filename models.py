@@ -221,6 +221,24 @@ class MPS(nn.Module):
 
         return cont.squeeze().real
     
+    def norm(self):
+        """Compute the state norm as tensor."""
+        if self.gauge_index is None:
+            return self.norm_full()
+        return self.site_contraction(self.gauge_index)
+
+    def guarantee_is_gauged(self):
+        """ Ensures that a gauge index exists"""
+        if self.gauge_index is None:
+            self.gauge_to(0)
+
+
+    def normalize(self):
+        """normalize the MPS"""
+        self.guarantee_is_gauged()
+        self.rescale_site_tensor(self.gauge_index)
+
+    
     def set_local_tensor(self, site_index, A):
         """Set tensor at specifed site index equal to A.
             A: a ComplexTensor"""
@@ -286,10 +304,10 @@ class MPS(nn.Module):
         self.gauge_index = site_index
     
     def site_contraction(self, site_index):
-        """ Return the contraction of single site tensor with its conjugate."""
+        """ Return the tensor contraction of single site tensor with its conjugate."""
         A = self.get_local_tensor(site_index)
         contractor = lambda a, aconj: torch.einsum('sij,sij->',a, aconj)
-        return A.apply_mul(A.conj(), contractor)
+        return A.apply_mul(A.conj(), contractor).real
 
     def get_local_matrix(self, site_index, spin_index, rotation=None):
         """spin_index = an (N,) tensor of spin configurations.
