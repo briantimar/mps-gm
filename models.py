@@ -115,11 +115,15 @@ class ComplexTensor:
     def squeeze(self):
         return ComplexTensor(self.real.squeeze(), self.imag.squeeze())
 
+    def __add__(self, other):
+        return ComplexTensor(self.real + other.real, 
+                                self.imag + other.imag)
+
     def __mul__(self, other):
         mul_op = lambda x, y: x * y
         return self.apply_mul(other, mul_op)
     
-    def __div__(self, other):
+    def div(self, other):
         return ComplexTensor(self.real/other, self.imag/other)
 
     def norm(self):
@@ -136,6 +140,9 @@ class ComplexTensor:
 
     def numpy(self):
         return self.real.detach().numpy() + 1j * self.imag.detach().numpy()
+    
+    def mean(self,dim):
+        return ComplexTensor(self.real.mean(dim), self.imag.mean(dim))
 
 
 
@@ -462,14 +469,14 @@ class MPS(nn.Module):
         if len(spin_config.shape) == 1:
                 spin_config = spin_config.unsqueeze(0)
         N = spin_config.shape[0]
-        #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
-        grad_psi = self.grad_twosite_psi(site_index, spin_config)
-        #gradient of the WF normalization
-        grad_norm = self.grad_twosite_norm(site_index)
-        #amplitudes of the spin configurations
-        amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
-
-        return - ((grad_psi * amplitude.conj()) / amplitude.norm()).mean(0) + grad_norm
+        with torch.no_grad():
+            #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
+            grad_psi = self.grad_twosite_psi(site_index, spin_config)
+            #gradient of the WF normalization
+            grad_norm = self.grad_twosite_norm(site_index)
+            #amplitudes of the spin configurations
+            amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
+            return ((grad_psi * amplitude.conj()).div( amplitude.norm())).mean(0)* -1.0  + grad_norm
 
 
     def set_sites_from_twosite(self, site_index, twosite,
