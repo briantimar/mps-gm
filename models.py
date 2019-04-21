@@ -487,12 +487,16 @@ class MPS(nn.Module):
         """Update the MPS local tensors at site_index, site_index +1 from twosite blob provided.
         The blob is SVD'd with spec truncation parameters, and either the left or right tensor is normalized.
         Local tensors are then overwritten with the SVD results.
-        twosite: (local_dim, local_dim, bond_dim, bond_dim) complex numpy array"""
+        twosite: (local_dim, local_dim, bond_dim, bond_dim) complex numpy array.
+        
+        Note that definite gauge is enforced: psi will be gauged to either site_index or
+        site_index + 1 depending on which normalization is selected."""
         Aleft, Aright = split_two_site(twosite,normalize=normalize,
                                             cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
 
         self.set_local_tensor_from_numpy(site_index, Aleft)
         self.set_local_tensor_from_numpy(site_index+1, Aright)
+        self.gauge_to(site_index+1 if normalize=='left' else site_index)
     
     @property
     def shape(self):
@@ -549,7 +553,7 @@ class UniformMPS(nn.Module):
         bc = self.bulk_tensor.apply_mul(self.bulk_tensor.conj(), spin_contractor)
         rc = self.right_tensor.apply_mul(self.right_tensor.conj(),spin_contractor)
 
-        for site in range(self.L-2):
+        for __ in range(self.L-2):
             cont = cont.apply_mul(bc, bulk_contractor)
 
         cont = cont.apply_mul(rc, bulk_contractor)
