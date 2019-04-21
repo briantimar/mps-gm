@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import warnings
 
+from utils import make_onehot
 #tools for SVD -- normalization and breaking two-site tensors
 from utils import svd_push_left, svd_push_right, split_two_site
 
@@ -120,9 +121,11 @@ class ComplexTensor:
                                 self.imag + other.imag)
 
     def __mul__(self, other):
-        mul_op = lambda x, y: x * y
-        return self.apply_mul(other, mul_op)
-    
+        if isinstance(other, ComplexTensor):
+            mul_op = lambda x, y: x * y
+            return self.apply_mul(other, mul_op)
+        return ComplexTensor(self.real * other, self.imag * other)
+        
     def div(self, other):
         return ComplexTensor(self.real/other, self.imag/other)
 
@@ -438,21 +441,21 @@ class MPS(nn.Module):
             left_contracted = left_contracted.view(N,1, 1, D1, 1)
             right_contracted = right_contracted.view(N,1, 1, 1, D2)
             if rotation is None:
-                U1r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
-                U2r = torch.stack([torch.eye(self.local_dim) for __ in range(N)],0)
-                U1i = torch.zeros_like(U1r)
-                U2i = torch.zeros_like(U2r)
-                U1 = ComplexTensor(U1r, U1i)
-                U2 = ComplexTensor(U2r, U2i)
+                #in this case the contracted unitary is a delta function in the 
+                # spin index, ie one-hot encoding
+                U1_contracted = make_onehot(spin_config[:,site_index],self.local_dim)
+                U2_contracted = make_onehot(spin_config[:,site_index+1],self.local_dim)
+                
             else:
-                U1 = rotation[range(N), site_index, 
+                U1_contracted = rotation[range(N), site_index, 
                             spin_config[:, site_index], :]
-                U2 = rotation[range(N), site_index+1,
+                U2_contracted = rotation[range(N), site_index+1,
                               spin_config[:, site_index+1], :]
-            U1 = U1.view(N, self.local_dim, self.local_dim, 1, 1)
-            U2 = U2.view(N, self.local_dim, self.local_dim, 1, 1)
+
+            U1_contracted = U1_contracted.view(N, self.local_dim, 1, 1, 1)
+            U2_contracted = U2_contracted.view(N, 1, self.local_dim, 1, 1)
            
-            return left_contracted * right_contracted * U1 * U2
+            return left_contracted * right_contracted * (U1_contracted * U2_contracted)
 
     def grad_twosite_norm(self, site_index):
         """ Compute the grad of the norm WRT two-site blob at specified index. 
