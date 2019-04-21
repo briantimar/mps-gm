@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 def svd(A, cutoff=1e-8, max_sv_to_keep=None):
     """ Perform singular value decomp of complex matrix A.
@@ -103,3 +103,15 @@ def split_two_site(A, normalize='left', cutoff=1e-8, max_sv_to_keep=None):
     return Aleft, Aright
 
     
+def make_onehot(int_tensor, n):
+    """Return one-hot encoding of specified tensor.
+        n = max integer value. Assumed that int_tensor only takes values in 0...n-1
+        (right now this is not checked)
+        int_tensor: (N,) integer tensor of labels
+        Returns: floattensor, shape (N, n), of one-hot encoding"""
+    onehot = torch.FloatTensor(int_tensor.size(0),n)
+    onehot.zero_()
+    dim=1
+    indices = int_tensor.to(dtype=torch.long).view(-1,1)
+    onehot.scatter_(dim,indices, 1)
+    return onehot
