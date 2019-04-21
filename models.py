@@ -492,7 +492,10 @@ class MPS(nn.Module):
         self.set_local_tensor_from_numpy(site_index, Aleft)
         self.set_local_tensor_from_numpy(site_index+1, Aright)
         
-        
+    def shape(self):
+        """ Representation of MPS 'shape' as defined by its bond dimensions"""
+        shapes = [tuple(t.shape[1:]) for t in self.tensors]
+        return shapes
 
 
 class UniformMPS(nn.Module):
