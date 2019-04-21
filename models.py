@@ -478,7 +478,6 @@ class MPS(nn.Module):
             amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
             return ((grad_psi * amplitude.conj()).div( amplitude.norm())).mean(0)* -1.0  + grad_norm
 
-
     def set_sites_from_twosite(self, site_index, twosite,
                                     cutoff=1e-16, max_sv_to_keep=None, 
                                     normalize='left'):
@@ -491,7 +490,8 @@ class MPS(nn.Module):
 
         self.set_local_tensor_from_numpy(site_index, Aleft)
         self.set_local_tensor_from_numpy(site_index+1, Aright)
-        
+    
+    @property
     def shape(self):
         """ Representation of MPS 'shape' as defined by its bond dimensions"""
         shapes = [tuple(t.shape[1:]) for t in self.tensors]
