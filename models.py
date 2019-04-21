@@ -208,6 +208,13 @@ class MPS(nn.Module):
                 t.real.normal_(0, init)
                 t.imag.normal_(0, init)
 
+    def sanitize_spin_config(self, spin_config):
+        if len(spin_config.shape) == 1:
+            spin_config = spin_config.unsqueeze(0)
+        if spin_config.size(1) != self.L:
+            raise ValueError("spin configuration does not match MPS size")
+        return spin_config
+
     def get_local_tensor(self, site_index):
         """ Returns the (three-index) tensor living at a particular physical index."""
         if (site_index <0) or (site_index >= self.L):
@@ -259,7 +266,6 @@ class MPS(nn.Module):
         """normalize the MPS"""
         self.guarantee_is_gauged()
         self.rescale_site_tensor(self.gauge_index)
-
     
     def set_local_tensor(self, site_index, A):
         """Set tensor at specifed site index equal to A.
@@ -361,8 +367,7 @@ class MPS(nn.Module):
             Returns: (N,D1, D2) tensor of amplitudes, D1 and D2 being the dangling bond dimensions
             of the tensors at the edges of the interval."""
 
-        if len(spin_config.shape) == 1:
-            spin_config = spin_config.unsqueeze(0)
+        spin_config = self.sanitize_spin_config(spin_config)
 
         def contractor(x, y):
             return torch.einsum('sij,sjk->sik', x, y)
@@ -383,8 +388,7 @@ class MPS(nn.Module):
         rotations: (N, L,d, d) complextensor of local unitaries applied.
             Returns: (N,) tensor of amplitudes, one for each spin config.
             """
-        if len(spin_config.shape) == 1:
-            spin_config = spin_config.unsqueeze(0)
+        spin_config = self.sanitize_spin_config(spin_config)
         N = spin_config.shape[0]
         return self.contract_interval(spin_config, 0, self.L, rotation=rotation).view(N)
 
@@ -417,8 +421,7 @@ class MPS(nn.Module):
             spin_config: (N, L) int tensor of spin configurations
             rotation:(N, L, d, d) complextensor of local unitaries applied."""
         with torch.no_grad():
-            if len(spin_config.shape) == 1:
-                spin_config = spin_config.unsqueeze(0)
+            spin_config = self.sanitize_spin_config(spin_config)
             N = spin_config.shape[0]
             if site_index < 0 or site_index >= self.L-1:
                 raise ValueError("Invalid index for twosite gradient")
@@ -469,8 +472,7 @@ class MPS(nn.Module):
     def grad_twosite_logprob(self, site_index, spin_config, rotation=None):
         """ Compute the gradient of the log probability WRT twosite blob at the specd site.
             Gradient is averaged over batch dimension."""
-        if len(spin_config.shape) == 1:
-                spin_config = spin_config.unsqueeze(0)
+        spin_config=self.sanitize_spin_config(spin_config)
         N = spin_config.shape[0]
         with torch.no_grad():
             #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
@@ -544,6 +546,13 @@ class UniformMPS(nn.Module):
             with torch.no_grad():
                 t.normal_(0, 1.0 / np.sqrt(self.bond_dim * self.local_dim))
 
+    def sanitize_spin_config(self, spin_config):
+        if len(spin_config.shape) == 1:
+            spin_config = spin_config.unsqueeze(0)
+        if spin_config.size(1) != self.L:
+            raise ValueError("spin configuration does not match MPS size")
+        return spin_config
+
     def norm(self):
         init_contractor = lambda x, y: torch.einsum('sij,sik->jk', x, y)
         spin_contractor = lambda x, y: torch.einsum('sik,sjl->ijkl', x, y)
@@ -591,19 +600,19 @@ class UniformMPS(nn.Module):
             local_matrix = local_tensor[spin_index, ...]
         return local_matrix
 
-    def amplitude(self, x, rotation=None):
-        """ x= (N, L) tensor listing spin configurations.
+    def amplitude(self, spin_config, rotation=None):
+        """ spin_config= (N, L) tensor listing spin configurations.
         rotation: (N, L,d, d) complextensor of local unitaries applied.
             Returns: (N,) tensor of amplitudes.
             """
-        if len(x.shape)==1:
-            x = x.unsqueeze(0)
-        N = x.shape[0]
+        spin_config = self.sanitize_spin_config(spin_config)
+        N = spin_config.size(0)
+
         contractor = lambda x, y: torch.einsum('sij,sjk->sik', x, y)
 
         def rotated_local_matrix(site_index):
             rot=None if rotation is None else rotation[:, site_index, ...]
-            return self.get_local_matrix(site_index, x[:, site_index],
+            return self.get_local_matrix(site_index, spin_config[:, site_index],
                                             rotation=rot)
         m0 = rotated_local_matrix(0)
         m1 = rotated_local_matrix(1)
@@ -626,3 +635,22 @@ class UniformMPS(nn.Module):
 
     def prob_normalized(self, x, rotation=None):
         return self.prob_unnormalized(x,rotation=rotation) / self.norm()
+
+
+from torch.utils.data import TensorDataset
+
+class MeasurementDataset(TensorDataset):
+    def __init__(self, samples, rotations):
+        super().__init__()
+        if samples.shape[0] != rotations.shape[0]:
+            raise ValueError
+        self.samples = TensorDataset(samples)
+        self.rotations = TensorDataset(rotations)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, i):
+        samples = self.samples[i][0]
+        rot = self.rotations[i][0]
+        return dict(samples=samples, rotations=dict(real=rot.real, imag=rot.imag))
