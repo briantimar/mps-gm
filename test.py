@@ -68,6 +68,25 @@ class TestUtils(TestCase):
         self.assertAlmostEqual( np.sum( Arc - np.identity(sv_to_keep)),0)
 
 
+class TestQTools(TestCase):
+
+    def test_pauli_exp(self):
+        from qtools import pauli_exp
+        theta = torch.tensor([0, np.pi/2, np.pi/2])
+        phi = torch.tensor([0, 0, np.pi/2])
+        U = pauli_exp(theta, phi)
+
+        target1 = np.identity(2)
+        target2 = np.array([[1/np.sqrt(2), 1/np.sqrt(2)], 
+                            [-1/np.sqrt(2), 1/np.sqrt(2)]])
+        target3 = (1.0 / np.sqrt(2)) * np.array([[ np.exp(1j * np.pi/4), np.exp(1j * np.pi/4)],
+                                                [-np.exp(-1j * np.pi/4), np.exp(-1j * np.pi/4)]])
+        targets = np.stack([target1, target2, target3], axis=0)
+
+        U = pauli_exp(theta, phi).numpy()
+
+        self.assertAlmostEqual( np.abs(np.sum(U - targets)),0,places=6)
+
 
 if __name__=='__main__':
     unittest.main()
