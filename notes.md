@@ -8,3 +8,13 @@ However, training so far has not succeeded on data sets including multiple bases
     - All the implementations are OK, it's just the optimization procedure itself that needs to be improved. 
 
 The former seems more likely.
+
+Update: just found at least one major flaw in the computation of amplitudes: the difference between basis state index and eigenvalue of the number operator. Under standard basis ordering conventions, where the most highly excited states comes first, these are opposites: (n eigenvalue) = 1 - (basis state index). My code for computing amplitudes and gradients was not taking this into account. 
+
+That can be fixed simply by preprocessing the measurement outcomes:
+indices = (1 - outcomes)/2
+and feeding indices the MPS training. This doesn't affect the quality of training itself.
+
+During training on rotated-basis sets, I find that the cost function starts increasing after an initial decrease. What I ought to do is train on a really simple set, like a two-qubit product state. 
+
+Implementation of unitaries in pauli_exp seems to be OK.

@@ -88,6 +88,8 @@ class SingleBasisMPS(nn.Module):
     def prob_normalized(self, x):
         return self.prob_unnormalized(x) / self.norm()
 
+    
+
 
 class ComplexTensor:
 
@@ -146,6 +148,9 @@ class ComplexTensor:
     
     def mean(self,dim):
         return ComplexTensor(self.real.mean(dim), self.imag.mean(dim))
+    
+    def display(self, items=10):
+        return self.numpy()[:items]
 
 
 
@@ -410,6 +415,9 @@ class MPS(nn.Module):
 
     def prob_normalized(self, x, rotation=None):
         return self.prob_unnormalized(x,rotation=rotation) / self.norm()
+
+    def amplitude_normalized(self, x, rotation=None):
+        return self.amplitude(x, rotation=rotation).div(self.norm().sqrt())
 
     ### methods for computing various gradients
     def grad_twosite_psi(self, site_index, spin_config, 
