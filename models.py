@@ -420,7 +420,7 @@ class MPS(nn.Module):
         return self.amplitude(x, rotation=rotation).div(self.norm().sqrt())
 
     ### methods for computing various gradients
-    def grad_twosite_psi(self, site_index, spin_config, 
+    def partial_deriv_twosite_psi(self, site_index, spin_config, 
                                             rotation=None):
         """Compute the gradient of Psi(spin_config) (with the given local
         unitaries applied) with respect to the two-site merged tensor at (site_index, site_index + 1)
@@ -479,19 +479,43 @@ class MPS(nn.Module):
             self.gauge_to(site_index)
         return self.merge(site_index).conj()
 
-    def grad_twosite_logprob(self, site_index, spin_config, rotation=None):
-        """ Compute the gradient of the log probability WRT twosite blob at the specd site.
-            Gradient is averaged over batch dimension."""
+    def partial_deriv_twosite_logprob(self, site_index, spin_config, rotation=None):
+        """ Compute the partial derivative of the log probability WRT complex-valued twosite blob at the specd site.
+             averaged over batch dimension."""
         spin_config=self.sanitize_spin_config(spin_config)
         N = spin_config.shape[0]
         with torch.no_grad():
-            #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
-            grad_psi = self.grad_twosite_psi(site_index, spin_config,rotation=rotation)
+            #paritial of the amplitude WRT blob, shape (N, d, d, D1, D2)
+            grad_psi = self.partial_deriv_twosite_psi(site_index, spin_config,rotation=rotation)
             #gradient of the WF normalization
             grad_norm = self.grad_twosite_norm(site_index)
             #amplitudes of the spin configurations
             amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
             return ((grad_psi * amplitude.conj()).div( amplitude.norm())).mean(0)* -1.0  + grad_norm
+
+    def grad_twosite_logprob(self, site_index, spin_config,
+                         rotation=None, cutoff=1e-10, normalize='left',
+                         max_sv_to_keep=None):
+        """Computes the update tensor defined by the gradient of the log-likelihood cost function with respect
+        to the real and imaginary parts of the two-site blob at site_index. Note that since log-prob is a function
+        of the blob and its conjugate, this is computed as partial(log-prog) / partial(blob*).
+            site_index: spatial index for the left edge of the two-site blob.
+            spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
+            rotation: local unitaries to apply to the MPS
+            cutoff: singular values below cutoff will be dropped when blob is split.
+            normalize = 'left', 'right': how to normalize the blob after splitting.
+            max_sv_to_keep: if not None, max number of singular values to keep at splitting.
+            
+            Note: psi will be gauged to site_index.
+
+            Returns: gradient tensor of shape (local_dim, local_dim, bond_dim, bond_dim) holding the gradients
+            of the log-prob WRT the real and imag parts of the two-site blob."""
+
+        self.gauge_to(site_index)
+        #gradient of the log-prob WRT that complex matrix
+        #note that A has to updated from the conjugate!
+        g = self.partial_deriv_twosite_logprob(site_index, spin_config, rotation=rotation).numpy().conj()
+        return 2 * g
 
     def set_sites_from_twosite(self, site_index, twosite,
                                     cutoff=1e-16, max_sv_to_keep=None, 
@@ -510,6 +534,33 @@ class MPS(nn.Module):
         self.set_local_tensor_from_numpy(site_index+1, Aright)
         self.gauge_to(site_index+1 if normalize=='left' else site_index)
     
+    def do_sgd_step(self, site_index, spin_config, 
+                    rotation=None,cutoff=1e-10,normalize='left',max_sv_to_keep=None,
+                    learning_rate=1e-3, ):
+        """Perform a gradient-descent step by varying only the two-site blob with left edge at site_index.
+           site_index: spatial index for the left edge of the two-site blob.
+            spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
+            rotation: local unitaries to apply to the MPS
+            cutoff: singular values below cutoff will be dropped when blob is split.
+            normalize = 'left', 'right': how to normalize the blob after splitting.
+            max_sv_to_keep: if not None, max number of singular values to keep at splitting.
+            learning_rate: for SGD update
+        """
+        #complex gradient array for twosite blob
+        blob_grad = self.grad_twosite_logprob(site_index, spin_config,  
+                                                rotation=rotation,cutoff=cutoff,normalize=normalize,
+                                                max_sv_to_keep=max_sv_to_keep)
+    
+        #two-site blob matrix at the site
+        blob = self.merge(site_index).numpy()
+        blob = blob - learning_rate * blob_grad
+        #update the mps with new blob
+        self.set_sites_from_twosite(site_index, blob,
+                                   cutoff=cutoff, max_sv_to_keep=max_sv_to_keep,
+                                   normalize=normalize)
+
+
+
     @property
     def shape(self):
         """ Representation of MPS 'shape' as defined by its bond dimensions"""
