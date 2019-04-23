@@ -45,3 +45,9 @@ Having fixed typos in models.py, it seems that the gradient-computation under lo
     - Training on x-product state, 100 samples in z basis only -> poor training.
 
 Aha! And indeed, if I now switch back to the larger datasets, training on informationally complete basis sets, training seems to work very well indeed.
+
+### A few practical notes.
+    - So far, still haven't trained well on GHZ states (have only tried discrete bases here)
+        - Using a smaller SV cutoff leads to better results, but not great
+        - Random-basis training on GHZ states does lead to some learning, but it's very poor. Need to go to an easier case first (eg product states in random bases)
+            - haven't yet implemented entropy penalty during training.
