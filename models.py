@@ -486,7 +486,7 @@ class MPS(nn.Module):
         N = spin_config.shape[0]
         with torch.no_grad():
             #gradient of the amplitude WRT blob, shape (N, d, d, D1, D2)
-            grad_psi = self.grad_twosite_psi(site_index, spin_config)
+            grad_psi = self.grad_twosite_psi(site_index, spin_config,rotation=rotation)
             #gradient of the WF normalization
             grad_norm = self.grad_twosite_norm(site_index)
             #amplitudes of the spin configurations

@@ -36,3 +36,12 @@ To try:
 
 ### update: I'm a dumbass
 The contract_interval() method wasn't including local rotations. fixed.
+Also in grad_twosite_logprob()
+
+Having fixed typos in models.py, it seems that the gradient-computation under local rotations works OK. I think my current difficulties in training stem from entropy of the measurement-outcome distribution for small datasets. Consider:
+    - Training on z-product state, 100 samples in z basis only -> no problem
+    - Training on x-product state, 100 samples in x basis only -> no problem
+    - Training on z-product state, 100 samples in x basis only -> poor training
+    - Training on x-product state, 100 samples in z basis only -> poor training.
+
+Aha! And indeed, if I now switch back to the larger datasets, training on informationally complete basis sets, training seems to work very well indeed.
