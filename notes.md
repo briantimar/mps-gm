@@ -33,3 +33,6 @@ To try:
         - then, how to make nonpure ansatzes?
             - 
         - can you get (bounds on) reconstruction fidelity using rotated bases? 
+
+### update: I'm a dumbass
+The contract_interval() method wasn't including local rotations. fixed.

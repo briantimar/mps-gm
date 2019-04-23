@@ -438,13 +438,15 @@ class MPS(nn.Module):
                 left_contracted = ComplexTensor(torch.ones((N,1,1)), torch.zeros((N,1,1)))
             else:
                 #shape (N, 1, D1)
-                left_contracted = self.contract_interval(spin_config,0,site_index)
+                left_contracted = self.contract_interval(spin_config,0,site_index,
+                                                                rotation=rotation)
             if site_index == self.L-2:
                 right_contracted = ComplexTensor(
                     torch.ones((N, 1, 1)), torch.zeros((N, 1, 1)))
             else:
                 #shape (N, D2, 1)
-                right_contracted = self.contract_interval(spin_config, site_index +2, self.L)
+                right_contracted = self.contract_interval(spin_config, site_index +2, self.L,
+                                                                rotation=rotation)
             
             D1 = left_contracted.shape[-1]
             D2 = right_contracted.shape[-2]
