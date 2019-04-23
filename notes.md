@@ -18,3 +18,18 @@ and feeding indices the MPS training. This doesn't affect the quality of trainin
 During training on rotated-basis sets, I find that the cost function starts increasing after an initial decrease. What I ought to do is train on a really simple set, like a two-qubit product state. 
 
 Implementation of unitaries in pauli_exp seems to be OK.
+
+### Meeting with Manuel and Evert
+One thing to check: can random-unitary measurements be used to obtain fidelities between two density matrices? Ie Tr(rho1 rho2), where rho1 is an experimental state and rho2 is a reconstruction. 
+
+Another mixed state ansatz: MPS with some sites traced out. 
+
+To try: 
+    - 
+    - pure state MPS "just try it"
+        - first, for globally pure states
+        - then, add a bit of Lindblad
+            - "how far away are we in local density matrices"
+        - then, how to make nonpure ansatzes?
+            - 
+        - can you get (bounds on) reconstruction fidelity using rotated bases? 
