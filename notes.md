@@ -51,3 +51,13 @@ Aha! And indeed, if I now switch back to the larger datasets, training on inform
         - Using a smaller SV cutoff leads to better results, but not great
         - Random-basis training on GHZ states does lead to some learning, but it's very poor. Need to go to an easier case first (eg product states in random bases)
             - haven't yet implemented entropy penalty during training.
+
+
+## April 29
+
+### Status:
+    * Have demonstrated successful discrete, multi-basis training on product states in the z basis.
+    * Updated models.py to include two-site SGD update. In the process I may have fixed some bug in the original SGD update code, because I can now train on multi-discrete-basis GHZ data to get MPSs with the correct probabilities in the z-basis. 
+    * **However**, the relative phase between the two basis states is incorrect: out of phase by 75 degrees (should be zero).
+        * This success seems to be precarious / initialization-dependent: on a second training run the ghz probabilities come out at .4 each, with the angle still far from zero. I guess the training is getting stuck in local minima. Right now I'm using vanilla SGD, and no entropy regularization. Might be cool to try adding the regularization next.
+        * Seems that the final angle varies strongly between training attempts -- indicating perhaps that it's not well-constrained by the data?
