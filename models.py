@@ -388,6 +388,11 @@ class MPS(nn.Module):
                                 contractor)
         return m
 
+    def trace_rho_squared(self, site_index):
+        """ Compute the trace of the reduced partial density matrix squared, obtained
+        by partitioning the system between sites (site_index, site_index + 1)"""
+        pass
+
     def amplitude(self, spin_config, rotation=None):
         """ spin_config= (N, L) tensor listing spin configurations.
         rotations: (N, L,d, d) complextensor of local unitaries applied.
@@ -407,16 +412,25 @@ class MPS(nn.Module):
         return al.apply_mul(ar, contractor)
 
     def prob_unnormalized(self, x,rotation=None):
+        """Compute the unnormalized probability associated with spin configuration x"""
         a = self.amplitude(x, rotation=rotation)
         return (a * a.conj()).real
 
     def nll_loss(self, x, rotation=None):
+        """ Compute the negative-log-likelihood loss function for a batch of spin
+        configurations x, and corresponding local rotations."""
         return - self.prob_unnormalized(x,rotation=rotation).log().mean() + self.norm().log()
 
     def prob_normalized(self, x, rotation=None):
+        """ Compute the normalized probability of a spin configuration x.
+            If provided, local rotations are applied to the state before computing the
+            probability.
+            """
         return self.prob_unnormalized(x,rotation=rotation) / self.norm()
 
     def amplitude_normalized(self, x, rotation=None):
+        """ Compute the normalized amplitude of a spin configuration x.
+            If provided, local rotations are applied to the state first."""
         return self.amplitude(x, rotation=rotation).div(self.norm().sqrt())
 
     ### methods for computing various gradients
