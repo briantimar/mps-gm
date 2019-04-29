@@ -61,3 +61,12 @@ Aha! And indeed, if I now switch back to the larger datasets, training on inform
     * **However**, the relative phase between the two basis states is incorrect: out of phase by 75 degrees (should be zero).
         * This success seems to be precarious / initialization-dependent: on a second training run the ghz probabilities come out at .4 each, with the angle still far from zero. I guess the training is getting stuck in local minima. Right now I'm using vanilla SGD, and no entropy regularization. Might be cool to try adding the regularization next.
         * Seems that the final angle varies strongly between training attempts -- indicating perhaps that it's not well-constrained by the data?
+
+
+I've now added s2 penalty. All the training code seems to be bug-free; can perform random-basis training on z-product states.
+
+With 1e4 samples, training on L=2 ghz state, I find some learning, but the probabilities of the trained state for the various z-basis states are poorer than discrete-multibasis. OTOH, it seems to get the angle right more often.
+
+Large batch sizes seem to be preferable.
+
+Sometimes the angle converges to zero, and sometimes it converges to 180 degrees. This is actually really interesting -- I think this may be fundamental to the random-basis NLL training method. In particular, I do seem to obtain a robust convergence in the cost function in each case -- I think it's possible that, for a given dataset, two states with different phases may have very similar NLL average cost functions, corresponding to e.g. two nearly equal minima.
