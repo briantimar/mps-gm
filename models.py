@@ -508,7 +508,7 @@ class MPS(nn.Module):
            
             return left_contracted * right_contracted * (U1_contracted * U2_contracted)
 
-    def grad_twosite_norm(self, site_index):
+    def partial_deriv_twosite_norm(self, site_index):
         """ Compute the grad of the norm WRT two-site blob at specified index. 
         First checks that mps is gauged to the relevant site.
         Returns: (loc_dim, loc_dim, D1, D2) ComplexTensor"""
@@ -517,8 +517,9 @@ class MPS(nn.Module):
             self.gauge_to(site_index)
         return self.merge(site_index).conj()
 
-    def partial_deriv_twosite_logprob(self, site_index, spin_config, rotation=None):
-        """ Compute the partial derivative of the log probability WRT complex-valued twosite blob at the specd site.
+    def partial_deriv_twosite_nll(self, site_index, spin_config, rotation=None):
+        """ Compute the partial derivative of the negative-log-likelihood cost function
+           WRT complex-valued twosite blob at the specd site.
              averaged over batch dimension."""
         spin_config=self.sanitize_spin_config(spin_config)
         N = spin_config.shape[0]
@@ -526,33 +527,33 @@ class MPS(nn.Module):
             #paritial of the amplitude WRT blob, shape (N, d, d, D1, D2)
             grad_psi = self.partial_deriv_twosite_psi(site_index, spin_config,rotation=rotation)
             #gradient of the WF normalization
-            grad_norm = self.grad_twosite_norm(site_index)
+            grad_norm = self.partial_deriv_twosite_norm(site_index)
             #amplitudes of the spin configurations
             amplitude = self.amplitude(spin_config,rotation=rotation).view(N, 1, 1, 1, 1)
             return ((grad_psi * amplitude.conj()).div( amplitude.norm())).mean(0)* -1.0  + grad_norm
 
-    def grad_twosite_logprob(self, site_index, spin_config,
+    def grad_twosite_nll(self, site_index, spin_config,
                          rotation=None, cutoff=1e-10, normalize='left',
                          max_sv_to_keep=None):
-        """Computes the update tensor defined by the gradient of the log-likelihood cost function with respect
-        to the real and imaginary parts of the two-site blob at site_index. Note that since log-prob is a function
-        of the blob and its conjugate, this is computed as partial(log-prog) / partial(blob*).
+        """Computes the update tensor defined by the gradient of the negative log-likelihood cost function
+         with respect to the real and imaginary parts of the two-site blob at site_index.
+         
             site_index: spatial index for the left edge of the two-site blob.
             spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
             rotation: local unitaries to apply to the MPS
             cutoff: singular values below cutoff will be dropped when blob is split.
             normalize = 'left', 'right': how to normalize the blob after splitting.
             max_sv_to_keep: if not None, max number of singular values to keep at splitting.
-            
+
             Note: psi will be gauged to site_index.
 
             Returns: gradient array of shape (local_dim, local_dim, bond_dim, bond_dim) holding the gradients
-            of the log-prob WRT the real and imag parts of the two-site blob."""
+            of the NLL WRT the real and imag parts of the two-site blob."""
 
         self.gauge_to(site_index)
         #gradient of the log-prob WRT that complex matrix
         #note that A has to updated from the conjugate!
-        g = self.partial_deriv_twosite_logprob(site_index, spin_config, rotation=rotation).numpy().conj()
+        g = self.partial_deriv_twosite_nll(site_index, spin_config, rotation=rotation).numpy().conj()
         return 2 * g
 
     def partial_deriv_twosite_trace_rho_squared(self, site_index):
@@ -568,7 +569,6 @@ class MPS(nn.Module):
         inner_blob = A.apply_mul(A.conj(), inner_contractor)
         return A.conj().apply_mul(inner_blob, edge_contractor) * 2
 
-   
 
     def partial_deriv_twosite_renyi2_entropy(self, site_index):
         """ Compute the partial derivative of the renyi-2 entropy, defined by partitioning
@@ -604,7 +604,7 @@ class MPS(nn.Module):
     
     def do_sgd_step(self, site_index, spin_config, 
                     rotation=None,cutoff=1e-10,normalize='left',max_sv_to_keep=None,
-                    learning_rate=1e-3, ):
+                    learning_rate=1e-3, s2_penalty=None):
         """Perform a gradient-descent step by varying only the two-site blob with left edge at site_index.
            site_index: spatial index for the left edge of the two-site blob.
             spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
@@ -613,15 +613,22 @@ class MPS(nn.Module):
             normalize = 'left', 'right': how to normalize the blob after splitting.
             max_sv_to_keep: if not None, max number of singular values to keep at splitting.
             learning_rate: for SGD update
+            s2_penalty: if not None, penalty term corresponding to coefficient of the Renyi-2 entropy in 
+            the cost function. Positive values will discourage high entropy.
         """
-        #complex gradient array for twosite blob
-        blob_grad = self.grad_twosite_logprob(site_index, spin_config,  
+        #gradient of the NLL cost function with respect to real and imag parts of blob
+        nll_grad = self.grad_twosite_nll(site_index, spin_config,  
                                                 rotation=rotation,cutoff=cutoff,normalize=normalize,
                                                 max_sv_to_keep=max_sv_to_keep)
-    
+        
+        #gradient array of the renyi-2 entropy at site_index WRT blob
+        if s2_penalty is not None:
+            s2_grad = self.grad_twosite_renyi2_entropy(site_index)
+            nll_grad = nll_grad + s2_penalty * s2_grad
+            
         #two-site blob matrix at the site
         blob = self.merge(site_index).numpy()
-        blob = blob - learning_rate * blob_grad
+        blob = blob - learning_rate * nll_grad
         #update the mps with new blob
         self.set_sites_from_twosite(site_index, blob,
                                    cutoff=cutoff, max_sv_to_keep=max_sv_to_keep,
