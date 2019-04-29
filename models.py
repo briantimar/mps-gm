@@ -555,6 +555,19 @@ class MPS(nn.Module):
         g = self.partial_deriv_twosite_logprob(site_index, spin_config, rotation=rotation).numpy().conj()
         return 2 * g
 
+    def partial_deriv_twosite_renyi2_entropy(self, site_index):
+        """ Compute the partial derivative of the Renyi-2 entropy, defined by partitioning
+        the system at bond (site_index, site_index +1), with respect to the blob tensor at the bond.
+        Returns: (local_dim, local_dim, bond_dim, bond_dim) ComplexTensor"""
+        if self.gauge_index != site_index:
+            warnings.warn("MPS should be gauged to blob site before computing grads")
+            self.gauge_to(site_index)
+        A = self.merge(site_index)
+        inner_contractor = lambda a, astar: torch.einsum('stij,stik->jk',a,astar)
+        edge_contractor = lambda astar, a: torch.einsum('stil,lk->stik',astar,a)
+        inner_blob = A.apply_mul(A.conj(), inner_contractor)
+        return A.conj().apply_mul(inner_blob, edge_contractor) * 2
+
     def set_sites_from_twosite(self, site_index, twosite,
                                     cutoff=1e-16, max_sv_to_keep=None, 
                                     normalize='left'):
