@@ -99,6 +99,11 @@ class ComplexTensor:
         self.imag = imag
 
     def apply_mul(self, other, mul_op):
+        """Apply a multiplication op.
+            other: a ComplexTensor
+            mul_op: a function which takes two real tensors and returns some sort of contraction, 
+            bilinear in its args.
+            Returns: a ComplexTensor representing the product of self with other."""
         r = mul_op(self.real, other.real) - mul_op(self.imag, other.imag)
         i = mul_op(self.real, other.imag) + mul_op(self.imag, other.real)
         return ComplexTensor(r,i)
@@ -108,6 +113,7 @@ class ComplexTensor:
         return self.real.shape
 
     def conj(self):
+        """ Returns the complex conjugate tensor"""
         return ComplexTensor(self.real, -self.imag)
 
     def __getitem__(self, slice):
@@ -390,8 +396,22 @@ class MPS(nn.Module):
 
     def trace_rho_squared(self, site_index):
         """ Compute the trace of the reduced partial density matrix squared, obtained
-        by partitioning the system between sites (site_index, site_index + 1)"""
-        pass
+        by partitioning the system between sites (site_index, site_index + 1)
+        
+        Returns: real scalar."""
+        if site_index < 0 or site_index >= self.L-1:
+            raise ValueError("not a valid bond for partitioning the system")
+        if self.gauge_index != site_index:
+            warnings.warn("MPS should be gauged before computing reduced density ops")
+            self.gauge_to(site_index)
+
+        A = self.get_local_tensor(site_index)
+        contractor_inner = lambda a, astar: torch.einsum('sij,sik->jk', a, astar)
+        contractor_spatial = lambda a1, a2: torch.einsum('ij,ij->', a1, a2)
+        Ainner = A.apply_mul(A.conj(), contractor_inner)
+        return Ainner.apply_mul(Ainner.conj(), contractor_spatial).numpy().real
+
+        
 
     def amplitude(self, spin_config, rotation=None):
         """ spin_config= (N, L) tensor listing spin configurations.
