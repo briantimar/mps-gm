@@ -411,6 +411,10 @@ class MPS(nn.Module):
         Ainner = A.apply_mul(A.conj(), contractor_inner)
         return Ainner.apply_mul(Ainner.conj(), contractor_spatial).numpy().real
 
+    def renyi2_entropy(self, site_index):
+        """ Compute the Renyi-2 entropy for the density matrix defined on the subsystem
+            [0, ... site_index] (inclusive)"""
+        return -np.log(self.trace_rho_squared(site_index))
         
 
     def amplitude(self, spin_config, rotation=None):
