@@ -374,6 +374,21 @@ class MPS(nn.Module):
             If provided, local rotations are applied to the state first."""
         return self.amplitude(x, rotation=rotation).div(self.norm().sqrt())
 
+    def overlap(self, other):
+        """ Compute the overlap <other|self> onto another MPS.
+            Returns: complex scalar"""
+        if self.L != other.L:
+            raise ValueError("other state does not have the same length")
+        contractor_upper = lambda blob, upper: torch.einsum('ijkl,skm->ijmls', blob, upper)
+        contractor_lower = lambda blob, lower: torch.einsum('ijmls,sln->ijmn', blob, lower)
+        spin_contractor = lambda upper, lower: torch.einsum('sik,sjl->ijkl',upper, lower)
+        A0 = self.get_local_tensor(0)
+        blob = A0.apply_mul(other.get_local_tensor(0).conj(),spin_contractor)
+        for i in range(1, self.L):
+            blob = blob.apply_mul(self.get_local_tensor(i),contractor_upper)
+            blob = blob.apply_mul(other.get_local_tensor(i).conj(), contractor_lower)
+        return blob.numpy().item()
+
     ### methods for computing various gradients
     def partial_deriv_twosite_psi(self, site_index, spin_config, 
                                             rotation=None):
