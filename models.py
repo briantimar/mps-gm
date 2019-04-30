@@ -574,6 +574,7 @@ class MPS(nn.Module):
         shapes = [tuple(t.shape[1:]) for t in self.tensors]
         return shapes
 
+### helper functions for building a few simple GHZ states
 
 def build_ghz_plus(L):
     """ Return normalized MPS representing a GHZ+ state of length L"""
@@ -602,6 +603,18 @@ def build_ghz_plus(L):
     for i in range(1, L-2):
         psi.set_local_tensor(i, A)
     psi.gauge_index = None
+    return psi
+
+def build_uniform_product_state(L, theta, phi):
+    """ Return uniform product state where qubit is in eigenstate of n \cdot \sigma, 
+        n being the unit vector defined by polar angles (theta, phi) """
+    Ar = torch.tensor([np.cos(theta/2), np.sin(theta/2)*np.cos(phi)]).view(2,1,1)
+    Ai = torch.tensor([0., np.sin(phi)]).view(2,1,1)
+    A = ComplexTensor(Ar, Ai)
+    psi = MPS(L, local_dim=2,bond_dim=1)
+    for i in range(L):
+        psi.set_local_tensor(i,A)
+    psi.gauge_index=None
     return psi
 
 from torch.utils.data import TensorDataset

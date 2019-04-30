@@ -78,3 +78,15 @@ The current algorithm is very simple: for each batch of data, sweep left and the
 At each bond, merge, gradient-step, and then break using that same batch. The gradient update is vanilla SGD; there's also a penalty added to the Renyi-2 entropy cost function, which I haven't found to have much effect so far. 
 
 The really odd thing is, I get poor training even on an L=2 GHZ state, where there's only one bond (ie where the updates are effectively global!).
+
+### Update: 
+Here's something very interesting:
+![asd](assets/nll_loss_example_2019-04-30_14:12:26.png)
+
+Here, I'm plotting the NLL cost function during random-basis training for the mps model (blue curve), and an exact ghz-plus MPS (orange). The true ghz state has a **significantly higher** cost on the training set! 
+
+This suggests that the **sampling process is in error somehow**. Dataset used for this plot: test_datasets/settings_ghz_plus_random_basis_L=2.npy
+
+Ah. Just found a bug in the qtools code that produces unitaries from angles -- I think one of the phi signs is wrong. will test in new branch.
+
+Fixed, that seems to have done the trick! Can now train on 2-qubit ghz without hassle.

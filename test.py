@@ -2,6 +2,10 @@ import unittest
 from unittest import TestCase
 from utils import *
 import numpy as np
+from models import MPS
+from models import build_uniform_product_state
+from tools import generate_binary_space
+
 
 class TestUtils(TestCase):
 
@@ -86,6 +90,78 @@ class TestQTools(TestCase):
         U = pauli_exp(theta, phi).numpy()
 
         self.assertAlmostEqual( np.abs(np.sum(U - targets)),0,places=6)
+
+class TestMPS(TestCase):
+
+    def test_normalization(self):
+        L=2
+        psi = MPS(L,local_dim=2,bond_dim=5)
+        
+        with torch.no_grad():
+            basis = torch.tensor(generate_binary_space(L),dtype=torch.long)
+            probs = psi.prob_normalized(basis)
+            self.assertAlmostEqual(probs.sum().item(), 1.0,places=6)
+
+    def test_uniform_product_state(self):
+        L=2
+        theta, phi = 0,0
+        psi = build_uniform_product_state(L, theta, phi)
+        with torch.no_grad():
+            self.assertAlmostEqual(psi.norm().item(), 1.0)
+
+            n_eigenvals = torch.tensor(generate_binary_space(L), dtype=torch.long)
+            basis = 1-n_eigenvals
+            target = np.asarray([1,0,0,0])
+            
+            self.assertAlmostEqual(np.sum(np.abs(target - 
+                                                psi.prob_normalized(basis).numpy())),0,places=6)
+
+            psix = build_uniform_product_state(L, np.pi/2, 0)
+            targetx = .25 * np.ones(4)
+            self.assertAlmostEqual(np.sum(np.abs(targetx -
+                                                 psix.prob_normalized(basis).numpy())), 0, places=6)
+
+    def test_amplitudes(self):
+        from qtools import pauli_exp
+        L = 2
+        psi = build_uniform_product_state(L, 0, 0)
+        with torch.no_grad():
+           
+            n_eigenvals = torch.tensor(
+                generate_binary_space(L), dtype=torch.long)
+            basis = 1-n_eigenvals
+            amp = psi.amplitude_normalized(basis).numpy()
+            target = np.asarray([1, 0, 0, 0])
+            self.assertAlmostEqual(np.sum(np.abs(target - amp)),0,places=6)
+
+            theta, phi = (np.pi /2 * torch.ones_like(basis,dtype=torch.float),
+                         0.0 * torch.ones_like(basis,dtype=torch.float))
+            U = pauli_exp(theta, phi)
+            
+            amp = psi.amplitude_normalized(basis, rotation=U).numpy()
+            target = .5 * np.asarray([1, -1, -1, 1])
+            self.assertAlmostEqual(np.sum(np.abs(target - amp)), 0, places=6)
+
+
+
+    def test_overlap(self):
+        psi = MPS(2,2,5)
+        with torch.no_grad():
+            self.assertAlmostEqual(psi.norm().numpy(), psi.overlap(psi), places=6)
+    
+    def test_build_ghz(self):
+        from models import build_ghz_plus
+        L = 2
+        psi = build_ghz_plus(L)
+        self.assertAlmostEqual(np.sum(np.abs(
+                                        psi.amplitude_normalized(torch.tensor([1,0])).numpy()
+                                        - 1.0/np.sqrt(2))),
+                                0,places=6)
+        self.assertAlmostEqual(np.sum(np.abs(
+                                psi.amplitude_normalized(torch.tensor([0,1])).numpy()
+                                    - 1.0/np.sqrt(2))),
+                                0,places=6)
+    
 
 
 if __name__=='__main__':

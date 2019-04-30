@@ -98,7 +98,12 @@ from models import ComplexTensor
 
 def pauli_exp(theta, phi):
     """ Return a ComplexTensor representing local unitaries specified by the
-    given angles.s
+    given angles. Specifically, the result is a ComplexTensor U(theta, phi), defined such that
+    U(n \cdot \sigma) U\dag = \sigma^z
+        where n is the unit vector with polar angles theta, phi.
+        This means that a measurement of (n\cdot sigma) on |Psi> is equivalent to a measurement of 
+            \sigma^z on U |Psi>: U is the rotation I apply **to** |Psi> in order to "measure in the theta,phi
+            basis.
         Returns: (*angles.shape, 2,2) complexTensor"""
     if theta.shape != phi.shape:
         raise ValueError
