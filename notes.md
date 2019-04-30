@@ -70,3 +70,11 @@ With 1e4 samples, training on L=2 ghz state, I find some learning, but the proba
 Large batch sizes seem to be preferable.
 
 Sometimes the angle converges to zero, and sometimes it converges to 180 degrees. This is actually really interesting -- I think this may be fundamental to the random-basis NLL training method. In particular, I do seem to obtain a robust convergence in the cost function in each case -- I think it's possible that, for a given dataset, two states with different phases may have very similar NLL average cost functions, corresponding to e.g. two nearly equal minima.
+
+## April 30
+### Status
+Random-basis code works, but training quality is poor. 
+The current algorithm is very simple: for each batch of data, sweep left and then right across the chain. 
+At each bond, merge, gradient-step, and then break using that same batch. The gradient update is vanilla SGD; there's also a penalty added to the Renyi-2 entropy cost function, which I haven't found to have much effect so far. 
+
+The really odd thing is, I get poor training even on an L=2 GHZ state, where there's only one bond (ie where the updates are effectively global!).
