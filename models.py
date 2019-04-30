@@ -772,6 +772,34 @@ class UniformMPS(nn.Module):
     def prob_normalized(self, x, rotation=None):
         return self.prob_unnormalized(x,rotation=rotation) / self.norm()
 
+def build_ghz_plus(L):
+    """ Return normalized MPS representing a GHZ+ state of length L"""
+    psi = MPS(L, local_dim=2,bond_dim=2)
+    with torch.no_grad():
+        A0r = torch.tensor([[0,1],[0,0]],dtype=torch.float)
+        A1r = torch.tensor([[0,0],[1,0]],dtype=torch.float)
+        Ar = torch.stack([A0r, A1r], 0)
+        Ai = torch.zeros_like(Ar)
+        ## Bulk tensor
+        A = ComplexTensor(Ar, Ai)
+
+        l0r = torch.tensor([[0,1]],dtype=torch.float) 
+        l1r = torch.tensor([[1,0]],dtype=torch.float) 
+        lr = torch.stack([l0r, l1r],0)
+        rr = torch.stack([l1r.view(2,1)/np.sqrt(2), l0r.view(2,1)/np.sqrt(2)],0)
+        li = torch.zeros_like(lr)
+        ri = torch.zeros_like(rr)
+        #left edge tensor
+        l = ComplexTensor(lr, li)
+        #right edge tensor
+        r = ComplexTensor(rr, ri)
+
+    psi.set_local_tensor(0, l)
+    psi.set_local_tensor(L-1, r)
+    for i in range(1, L-2):
+        psi.set_local_tensor(i, A)
+    psi.gauge_index = None
+    return psi
 
 from torch.utils.data import TensorDataset
 
@@ -790,3 +818,4 @@ class MeasurementDataset(TensorDataset):
         samples = self.samples[i][0]
         rot = self.rotations[i][0]
         return dict(samples=samples, rotations=dict(real=rot.real, imag=rot.imag))
+
