@@ -79,8 +79,8 @@ class TestQTools(TestCase):
         target1 = np.identity(2)
         target2 = np.array([[1/np.sqrt(2), 1/np.sqrt(2)], 
                             [-1/np.sqrt(2), 1/np.sqrt(2)]])
-        target3 = (1.0 / np.sqrt(2)) * np.array([[ np.exp(1j * np.pi/4), np.exp(1j * np.pi/4)],
-                                                [-np.exp(-1j * np.pi/4), np.exp(-1j * np.pi/4)]])
+        target3 = (1.0 / np.sqrt(2)) * np.array([[ np.exp(1j * np.pi/4), np.exp(-1j * np.pi/4)],
+                                                [-np.exp(1j * np.pi/4), np.exp(-1j * np.pi/4)]])
         targets = np.stack([target1, target2, target3], axis=0)
 
         U = pauli_exp(theta, phi).numpy()

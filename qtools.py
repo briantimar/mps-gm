@@ -105,15 +105,17 @@ def pauli_exp(theta, phi):
 
     rU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
     iU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
+    ct, st = (theta/2).cos(), (theta/2).sin()
+    cp, sp = (phi/2).cos(), (phi/2).sin()
 
-    rU[...,0,0] = (theta/2).cos()*(phi/2).cos()
-    rU[...,0,1] = (theta/2).sin()*(phi/2).cos()
-    rU[...,1,0] = -(theta/2).sin()*(phi/2).cos()
-    rU[...,1,1] = (theta/2).cos()*(phi/2).cos()
+    rU[...,0,0] = ct * cp
+    rU[...,0,1] = st*cp
+    rU[...,1,0] = -st * cp
+    rU[...,1,1] = ct * cp
 
-    iU[...,0,0] = (theta/2).cos()*(phi/2).sin()
-    iU[...,0,1] = (theta/2).sin()*(phi/2).sin()
-    iU[...,1,0] = (theta/2).sin()*(phi/2).sin()
-    iU[...,1,1] = -(theta/2).cos()*(phi/2).sin()
+    iU[...,0,0] = ct * sp
+    iU[...,0,1] = -st * sp
+    iU[...,1,0] = -st * sp
+    iU[...,1,1] = -ct * sp
 
     return ComplexTensor(rU, iU)
