@@ -11,5 +11,5 @@ MPS generative models.
 
 # TODO
 * halt the proliferation of `_utils` modules
-* MPS sampling methods
+* ~~MPS sampling methods~~
 * package training code from notebooks
