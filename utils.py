@@ -166,6 +166,75 @@ def build_uniform_product_state(L, theta, phi):
     psi.gauge_index = None
     return psi
 
+def build_random_mps(L, bond_dim):
+    """ Build an mps with uniform bond dimension and random tensors."""
+    from models import MPS
+    return MPS(L,local_dim=2,bond_dim=bond_dim)
+
+def do_local_sgd_training(mps_model, dataloader, epochs, 
+                            learning_rate, s2_schedule=None,nstep=1,
+                            cutoff=1e-10,max_sv_to_keep=None, 
+                            ground_truth_mps = None):
+    """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
+    from provided dataloader.
+        mps_model: an MPS
+        dataloader: pytorch dataloader which yields dictionaries holding batches of spin configurations
+        and local unitaires.
+        epochs: int, number of epochs to train
+        learning_rate : lr for gradient descent
+        s2_schedule: if not None, iterable of s2 penalty coefficients, of length epochs * len(dataloader)
+        nstep: how many gradient descent updates to make at each bond.
+        cutoff: threshold below which to drop singular values
+        max_sv_to_keep: if not None, max number of singular vals to keep at each bond.
+        ground_truth_mps: if not None, an MPS against which the model's fidelity will be checked after
+        every sweep.
+
+        Returns: dictionary, mapping:
+                    'loss' -> batched loss function during training
+                    'fidelity' -> if ground truth state was provided, array of fidelties during training.
+        """
+    from models import ComplexTensor
+    if s2_schedule is None:
+        s2_schedule = np.zeros(len(dataloader) * epochs)
+    #system size
+    L = mps_model.L
+    #logging the loss function
+    losses = []
+    fidelities = []
+    for ep in range(epochs):
+        for step, inputs in enumerate(dataloader):
+            #get torch tensors representing measurement outcomes, and corresponding local unitaries
+            spinconfig = inputs['samples']
+            rot = inputs['rotations']
+            rotations = ComplexTensor(rot['real'], rot['imag'])
+
+            s2_penalty = s2_schedule[ep*len(dataloader) + step]
+            #forward sweep across the chain
+            for i in range(L-1):
+                for __ in range(nstep):
+                    #computes merged two-site tensor at bond i, and the gradient of NLL cost function
+                    # with respect to this 'blob'; updates merged tensor accordingly, then breaks back to local tensors
+                    mps_model.do_sgd_step(i, spinconfig,
+                                    rotation=rotations, cutoff=cutoff, normalize='left', 
+                                    max_sv_to_keep=max_sv_to_keep,
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty)
+            #backward sweep across the chain
+            for i in range(L-3, 0, -1):
+                for __ in range(nstep):
+                    mps_model.do_sgd_step(i, spinconfig,
+                                    rotation=rotations, cutoff=cutoff, normalize='right',
+                                     max_sv_to_keep=max_sv_to_keep,
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty)
+            with torch.no_grad():
+                #record batched loss functions
+                losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
+                if ground_truth_mps is not None:
+                    fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm().numpy())
+    return dict(loss=np.asarray(losses),
+                fidelity=np.asarray(fidelities))
+                
+
+
 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
