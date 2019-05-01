@@ -567,6 +567,79 @@ class MPS(nn.Module):
                                    normalize=normalize)
 
 
+    ### Sampling methods
+    def sample(self, N, rotations=None):
+        """ Draw N samples from the z (standard) basis distribution defined by the MPS.
+            N: int, number of samples to draw
+            rotations: if not None, an (N, L, 2, 2) ComplexTensor specifying local unitaries to 
+            be applied at each site prior to sampling.
+            Returns: (N, L) torch tensor of binary outcomes, where each value indicates the
+            index of the state observed. Hence 0 = spin up, 1 = spin down.
+            """
+        if self.local_dim != 2:
+            raise NotImplementedError
+        if (rotations is not None) and rotations.size(0) != N:
+            raise ValueError("Rotations first dimension must match number of samples")
+
+        self.gauge_to(0)
+
+        right_contractor = lambda x, xconj: torch.einsum('aik,ajk->aij', x, xconj)
+        left_contractor = lambda prev, local: torch.einsum('aik,akj->aij',prev, local)
+        
+        samples = torch.empty((N, self.L),dtype=torch.long)
+
+        def draw_conditional_samples(site_index, rotations, prev_amplitude=None):
+            """Draw samples from the distribution at site_index, conditioned on all previous
+                outcomes (if any). These are specified by prev_amplitude, which if not None
+                is an (N, 1, D) ComplexTensor holding MPS partial amplitudes for all previous
+                samples
+                Returns: (N,) binary tensor of spin index outcomes, and (N,1,D) ComplexTensor
+                of amplitudes for the joint outcome defined by previous amplitudes and 
+                outcomes at site_index. """
+            #local rotation to be applied before sampling
+            localrot = None if rotations is None else rotations[:, site_index, ...]
+            #local rotated matrix corresponding to spin index 1
+            amp1 = self.get_local_matrix(site_index=site_index,
+                                            spin_index=torch.ones(
+                                                N, dtype=torch.long),
+                                            rotation=localrot)
+            if prev_amplitude is not None:
+                # contract with amplitude of previous outcomes to get joint amplitude
+                amp1 = prev_amplitude.apply_mul(amp1, left_contractor)
+            
+            #unnormalized joint probability of drawing basis state with index 1 (spin down), 
+            #and all previous spin outcomes
+            p1_and_prev = amp1.apply_mul(amp1.conj(), right_contractor).real.view(N)
+            if prev_amplitude is None:
+                p1_cond = p1_and_prev / self.norm()
+            else:
+                #unnormalized probability of previous samples
+                p_prev = prev_amplitude.apply_mul(prev_amplitude.conj(), right_contractor).real.view(N)
+                #conditional probability of '1', given previous
+                p1_cond = p1_and_prev / p_prev
+            #draw samples from the conditional distribution
+            cond_samples = torch.distributions.bernoulli.Bernoulli(probs=p1_cond).sample().to(
+            dtype=torch.long)
+            #local matrices corresponding to outcomes
+            local_amp_sampled = self.get_local_matrix(site_index=site_index,
+                                                    spin_index=cond_samples,
+                                                    rotation=localrot)
+            #update the joint amplitude of all outcomes
+            if prev_amplitude is None:
+                current_amplitude = local_amp_sampled
+            else:
+                current_amplitude = prev_amplitude.apply_mul(local_amp_sampled, left_contractor)
+            return cond_samples, current_amplitude
+
+        with torch.no_grad():
+            prev_amplitude = None
+            for site_index in range(self.L):
+                cond_samples, prev_amplitude = draw_conditional_samples(site_index,rotations,
+                                                                    prev_amplitude=prev_amplitude)
+                samples[:, site_index] = cond_samples
+            return samples
+        
+
 
     @property
     def shape(self):
