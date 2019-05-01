@@ -167,6 +167,21 @@ def build_uniform_product_state(L, theta, phi):
     return psi
 
 
+def draw_random(mps, N):
+    """ Draw N samples from mps, each taken in a random basis.
+        Returns: angles, outcomes
+        where angles = (N, L, 2) tensor holding theta, phi angles 
+        outcomes = (N, L) tensor of pauli eigenvalue outcomes."""
+    from qutip_utils import sample_random_angles
+    from qtools import pauli_exp
+    angles = sample_random_angles((N, mps.L))
+    rotations = pauli_exp(angles[..., 0], angles[..., 1])
+    index_outcomes = mps.sample(N, rotations=rotations).numpy()
+    #convert to pauli eigenvalues
+    pauli_eig_outcomes = 1 - 2 * index_outcomes
+    return angles, pauli_eig_outcomes
+
+
 class MeasurementDataset(TensorDataset):
     def __init__(self, samples, rotations):
         super().__init__()

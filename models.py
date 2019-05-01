@@ -646,3 +646,14 @@ class MPS(nn.Module):
         """ Representation of MPS 'shape' as defined by its bond dimensions"""
         shapes = [tuple(t.shape[1:]) for t in self.tensors]
         return shapes
+
+    def save(self, fname):
+        """ Save mps tensors to filename"""
+        torch.save(self.tensors, fname)
+    
+    def load(self, fname):
+        """ Load mps tensors from filename"""
+        tensors = torch.load(fname)
+        for i in range(self.L):
+            self.set_local_tensor(i, tensors[i])
+        self.gauge_index=None
