@@ -12,5 +12,5 @@ MPS generative models.
 # TODO
 * halt the proliferation of `_utils` modules
 * ~~MPS sampling methods~~
-* Build some large-N datasets
+* ~~Build some large-N datasets~~
 * ~~package training code from notebooks~~
