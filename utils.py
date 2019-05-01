@@ -233,9 +233,6 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities))
                 
-
-
-
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
         Returns: angles, outcomes
@@ -249,6 +246,42 @@ def draw_random(mps, N):
     #convert to pauli eigenvalues
     pauli_eig_outcomes = 1 - 2 * index_outcomes
     return angles, pauli_eig_outcomes
+
+
+def do_training(angles, pauli_outcomes, 
+                learning_rate, batch_size, epochs,
+                 s2_schedule=None, cutoff=1e-10,
+                ground_truth_mps=None, seed=None):
+    """ Train MPS on given angles and outcomes.
+        angles: (N, L, 2) numpy array of theta, phi angles
+        pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
+        returns: trained mps and logdict holding loss and fidelity from training."""
+
+    from torch.utils.data import DataLoader
+    from models import MPS
+    from qtools import pauli_exp
+    if seed is not None:
+        torch.manual_seed(seed)
+    
+    if angles.shape[:2] != pauli_outcomes.shape:
+        raise ValueError("angle and outcome arrays are incompatible")
+    L = angles.shape[1]
+    angles = torch.tensor(angles,
+                          dtype=torch.float, requires_grad=False)
+    
+    spin_config_outcomes = torch.tensor(
+        (1 - pauli_outcomes)/2, dtype=torch.long, requires_grad=False)
+
+    #generate local unitaries from angles
+    rotations = pauli_exp(angles[..., 0], angles[..., 1])
+    ds = MeasurementDataset(spin_config_outcomes, rotations)
+    dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
+    #train a model
+    model = MPS(L, local_dim=2, bond_dim=2)
+    logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
+                                    s2_schedule=s2_schedule,cutoff=cutoff,
+                                    ground_truth_mps=ground_truth_mps)
+    return model, logdict
 
 
 class MeasurementDataset(TensorDataset):
