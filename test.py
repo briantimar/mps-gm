@@ -151,14 +151,14 @@ class TestMPS(TestCase):
     
     def test_build_ghz(self):
         from models import build_ghz_plus
-        L = 2
+        L = 4
         psi = build_ghz_plus(L)
         self.assertAlmostEqual(np.sum(np.abs(
-                                        psi.amplitude_normalized(torch.tensor([1,0])).numpy()
+                                        psi.amplitude_normalized(torch.tensor([1,0,1,0])).numpy()
                                         - 1.0/np.sqrt(2))),
                                 0,places=6)
         self.assertAlmostEqual(np.sum(np.abs(
-                                psi.amplitude_normalized(torch.tensor([0,1])).numpy()
+                                psi.amplitude_normalized(torch.tensor([0,1,0,1])).numpy()
                                     - 1.0/np.sqrt(2))),
                                 0,places=6)
     

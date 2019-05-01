@@ -600,7 +600,7 @@ def build_ghz_plus(L):
 
     psi.set_local_tensor(0, l)
     psi.set_local_tensor(L-1, r)
-    for i in range(1, L-2):
+    for i in range(1, L-1):
         psi.set_local_tensor(i, A)
     psi.gauge_index = None
     return psi
