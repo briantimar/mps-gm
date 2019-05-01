@@ -1,3 +1,4 @@
+from torch.utils.data import TensorDataset
 import numpy as np
 import torch
 
@@ -115,3 +116,69 @@ def make_onehot(int_tensor, n):
     indices = int_tensor.to(dtype=torch.long).view(-1,1)
     onehot.scatter_(dim,indices, 1)
     return onehot
+
+
+### helper functions for building a few simple GHZ states
+
+def build_ghz_plus(L):
+    """ Return normalized MPS representing a GHZ+ state of length L"""
+    from models import MPS, ComplexTensor
+    psi = MPS(L, local_dim=2, bond_dim=2)
+    with torch.no_grad():
+        A0r = torch.tensor([[0, 1], [0, 0]], dtype=torch.float)
+        A1r = torch.tensor([[0, 0], [1, 0]], dtype=torch.float)
+        Ar = torch.stack([A0r, A1r], 0)
+        Ai = torch.zeros_like(Ar)
+        ## Bulk tensor
+        A = ComplexTensor(Ar, Ai)
+
+        l0r = torch.tensor([[0, 1]], dtype=torch.float)
+        l1r = torch.tensor([[1, 0]], dtype=torch.float)
+        lr = torch.stack([l0r, l1r], 0)
+        rr = torch.stack([l1r.view(2, 1)/np.sqrt(2),
+                          l0r.view(2, 1)/np.sqrt(2)], 0)
+        li = torch.zeros_like(lr)
+        ri = torch.zeros_like(rr)
+        #left edge tensor
+        l = ComplexTensor(lr, li)
+        #right edge tensor
+        r = ComplexTensor(rr, ri)
+
+    psi.set_local_tensor(0, l)
+    psi.set_local_tensor(L-1, r)
+    for i in range(1, L-1):
+        psi.set_local_tensor(i, A)
+    psi.gauge_index = None
+    return psi
+
+
+def build_uniform_product_state(L, theta, phi):
+    """ Return uniform product state where qubit is in eigenstate of n \cdot \sigma, 
+        n being the unit vector defined by polar angles (theta, phi) """
+    from models import MPS, ComplexTensor
+    Ar = torch.tensor([np.cos(theta/2), np.sin(theta/2)
+                       * np.cos(phi)]).view(2, 1, 1)
+    Ai = torch.tensor([0., np.sin(phi)]).view(2, 1, 1)
+    A = ComplexTensor(Ar, Ai)
+    psi = MPS(L, local_dim=2, bond_dim=1)
+    for i in range(L):
+        psi.set_local_tensor(i, A)
+    psi.gauge_index = None
+    return psi
+
+
+class MeasurementDataset(TensorDataset):
+    def __init__(self, samples, rotations):
+        super().__init__()
+        if samples.shape[0] != rotations.shape[0]:
+            raise ValueError
+        self.samples = TensorDataset(samples)
+        self.rotations = TensorDataset(rotations)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, i):
+        samples = self.samples[i][0]
+        rot = self.rotations[i][0]
+        return dict(samples=samples, rotations=dict(real=rot.real, imag=rot.imag))

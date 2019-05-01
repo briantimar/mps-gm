@@ -3,7 +3,7 @@ from unittest import TestCase
 from utils import *
 import numpy as np
 from models import MPS
-from models import build_uniform_product_state
+from utils import build_uniform_product_state
 from tools import generate_binary_space
 
 
@@ -150,7 +150,7 @@ class TestMPS(TestCase):
             self.assertAlmostEqual(psi.norm().numpy(), psi.overlap(psi), places=6)
     
     def test_build_ghz(self):
-        from models import build_ghz_plus
+        from utils import build_ghz_plus
         L = 4
         psi = build_ghz_plus(L)
         self.assertAlmostEqual(np.sum(np.abs(
