@@ -8,3 +8,8 @@ MPS generative models.
 * `tools.py`: miscellaneous utils related to discrete probability distributions.
 * `utils.py`: code for SVD updates and other PyTorch related.
 * `test.py`: an (incomplete) collection of unit tests
+
+# TODO
+* halt the proliferation of `_utils` modules
+* MPS sampling methods
+* package training code from notebooks
