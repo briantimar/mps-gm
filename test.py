@@ -3,7 +3,6 @@ from unittest import TestCase
 from utils import *
 import numpy as np
 from models import MPS
-from utils import build_uniform_product_state
 from tools import generate_binary_space
 
 
@@ -142,6 +141,21 @@ class TestMPS(TestCase):
             target = .5 * np.asarray([1, -1, -1, 1])
             self.assertAlmostEqual(np.sum(np.abs(target - amp)), 0, places=6)
 
+    def test_sample(self):
+        from qtools import pauli_exp
+        L = 2
+        psi = build_uniform_product_state(L,0,0)
+        N=10
+        samples = psi.sample(N).numpy()
+        target = np.zeros((N,L))
+        self.assertAlmostEqual(np.sum(np.abs(samples-target)), 0, places=6)
+
+        psi = build_uniform_product_state(L, np.pi/2, 0)
+        theta = np.pi/2 * torch.ones(N,L,dtype=torch.float)
+        phi = torch.zeros(N,L, dtype=torch.float)
+        rot = pauli_exp(theta, phi)
+        samples = psi.sample(N, rotations=rot).numpy()
+        self.assertAlmostEqual(np.sum(np.abs(samples-target)), 0, places=6)
 
 
     def test_overlap(self):
@@ -150,7 +164,6 @@ class TestMPS(TestCase):
             self.assertAlmostEqual(psi.norm().numpy(), psi.overlap(psi), places=6)
     
     def test_build_ghz(self):
-        from utils import build_ghz_plus
         L = 4
         psi = build_ghz_plus(L)
         self.assertAlmostEqual(np.sum(np.abs(
