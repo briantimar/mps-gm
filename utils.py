@@ -243,7 +243,7 @@ def draw_random(mps, N):
         outcomes = (N, L) tensor of pauli eigenvalue outcomes."""
     from qutip_utils import sample_random_angles
     from qtools import pauli_exp
-    angles = sample_random_angles((N, mps.L))
+    angles = torch.tensor(sample_random_angles((N, mps.L)),dtype=torch.float)
     rotations = pauli_exp(angles[..., 0], angles[..., 1])
     index_outcomes = mps.sample(N, rotations=rotations).numpy()
     #convert to pauli eigenvalues

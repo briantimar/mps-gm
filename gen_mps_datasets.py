@@ -3,10 +3,10 @@ import torch
 from models import MPS
 from utils import build_ghz_plus, build_random_mps, draw_random
 #which values of system size to try
-system_sizes = np.linspace(4, 30, 2,dtype=int)
+system_sizes = np.arange(4, 30, 2,dtype=int)
 
 #for the random states, bond dimensions to try
-bond_dims = np.linspace(2, 20, 2, dtype=int)
+bond_dims = np.arange(2, 20, 2, dtype=int)
 
 #where to write the data
 savedir = "datasets/mps_sampled/"
@@ -27,4 +27,9 @@ for L in system_sizes:
 
     print("sampling from random states")
     for D in bond_dims:
-        psi = build_random_mps()
+        print("using bond dimension %d"%D)
+        psi = build_random_mps(L,D)
+        angles, outcomes = draw_random(psi, Nsamp)
+        np.save(savedir + "rand_L=%d_D=%d_angles" % (L,D), angles)
+        np.save(savedir + "rand_L=%d_D=%d_outcomes" % (L,D), outcomes)
+        psi.save(savedir + "rand_L=%d_D=%d_state" % (L,D))
