@@ -1,5 +1,8 @@
 from torch.utils.data import TensorDataset
 import numpy as np
+import scipy as sp
+import scipy.linalg
+import zgesvd
 import torch
 
 def svd(A, cutoff=1e-8, max_sv_to_keep=None):
@@ -16,7 +19,14 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
         v.shape = (k,M)
         and k is the number of singular values retained.
         """
-    u,s,v=np.linalg.svd(A, full_matrices=False)
+    try:
+        if(A.dtype == np.complex128):
+            u,s,v = zgesvd.svd_zgesvd(A, full_matrices=False, compute_uv=True)
+        else:
+            u,s,v = sp.linalg.svd(A, full_matrices=False)
+    except Exception as e:
+        print(e)
+
     singular_vals = np.diag(s)
     #keep only singular values above cutoff
     if cutoff is not None:
