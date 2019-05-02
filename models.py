@@ -633,7 +633,13 @@ class MPS(nn.Module):
                 #conditional probability of '1', given previous
                 p1_cond = p1_and_prev / p_prev
             #draw samples from the conditional distribution
-            cond_samples = torch.distributions.bernoulli.Bernoulli(probs=p1_cond).sample().to(
+            try:
+                cond_samples = torch.distributions.bernoulli.Bernoulli(probs=p1_cond).sample().to(
+            dtype=torch.long)
+            except RuntimeError:
+                print("probs unnormalized:", p1_cond)
+                p1_cond = p1_cond / p1_cond.sum()
+                cond_samples = torch.distributions.bernoulli.Bernoulli(probs=p1_cond).sample().to(
             dtype=torch.long)
             #local matrices corresponding to outcomes
             local_amp_sampled = self.get_local_matrix(site_index=site_index,

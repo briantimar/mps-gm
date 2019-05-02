@@ -12,7 +12,7 @@ bond_dims = np.arange(2, 20, 2, dtype=int)
 savedir = "datasets/mps_sampled/"
 
 #number of samples to draw per dataset
-Nsamp = int(2e4)
+Nsamp = int(1e5)
 
 np.random.seed(0)
 
@@ -20,7 +20,10 @@ for L in system_sizes:
     print("Sampling from system size %d" %L)
     print("Sampling from GHZ+ state")
     ghz_plus = build_ghz_plus(L)
+
     angles, outcomes = draw_random(ghz_plus, Nsamp)
+
+        
     np.save(savedir + "ghz_plus_L=%d_angles"%L, angles)
     np.save(savedir + "ghz_plus_L=%d_outcomes" % L,outcomes)
     ghz_plus.save(savedir + "ghz_plus_L=%d_state"%L)
