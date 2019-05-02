@@ -14,3 +14,4 @@ MPS generative models.
 * ~~MPS sampling methods~~
 * ~~Build some large-N datasets~~
 * ~~package training code from notebooks~~
+* ~~Add GPU support~~ (this is significantly slower than CPU on datasets I've tried so far -- tensors have to be moved to cpu for every SVD)
