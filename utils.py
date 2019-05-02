@@ -174,7 +174,7 @@ def build_random_mps(L, bond_dim):
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, s2_schedule=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
-                            ground_truth_mps = None, verbose=False):
+                            ground_truth_mps = None, verbose=False, use_cache=True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -188,7 +188,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         max_sv_to_keep: if not None, max number of singular vals to keep at each bond.
         ground_truth_mps: if not None, an MPS against which the model's fidelity will be checked after
         every sweep.
-
+        use_cache: whether to cache partial amplitudes during the sweeps.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -212,21 +212,27 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
             s2_penalty = s2_schedule[ep*len(dataloader) + step]
             #forward sweep across the chain
+            if use_cache:
+                mps_model.init_sweep('right', spinconfig,rotation=rotations)
             for i in range(L-1):
                 for __ in range(nstep):
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
                     # with respect to this 'blob'; updates merged tensor accordingly, then breaks back to local tensors
                     mps_model.do_sgd_step(i, spinconfig,
-                                    rotation=rotations, cutoff=cutoff, normalize='left', 
+                                    rotation=rotations, cutoff=cutoff, direction='right',
                                     max_sv_to_keep=max_sv_to_keep,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=False)
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=use_cache)
             #backward sweep across the chain
+            if use_cache:
+                mps_model.init_sweep('left', spinconfig, rotation=rotations)
+            #need to gauge the MPS here so that cached partial amplitudes on the right are accurate
+            mps_model.gauge_to(L-2)
             for i in range(L-3, 0, -1):
                 for __ in range(nstep):
                     mps_model.do_sgd_step(i, spinconfig,
-                                    rotation=rotations, cutoff=cutoff, normalize='right',
+                                    rotation=rotations, cutoff=cutoff, direction='left',
                                      max_sv_to_keep=max_sv_to_keep,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty, use_cache=False)
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty, use_cache=use_cache)
             with torch.no_grad():
                 #record batched loss functions
                 losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
