@@ -174,7 +174,7 @@ def build_random_mps(L, bond_dim):
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, s2_schedule=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
-                            ground_truth_mps = None):
+                            ground_truth_mps = None, verbose=False):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -194,6 +194,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
         """
     from models import ComplexTensor
+    import time
     if s2_schedule is None:
         s2_schedule = np.zeros(len(dataloader) * epochs)
     #system size
@@ -202,6 +203,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     losses = []
     fidelities = []
     for ep in range(epochs):
+        t0=time.time()
         for step, inputs in enumerate(dataloader):
             #get torch tensors representing measurement outcomes, and corresponding local unitaries
             spinconfig = inputs['samples']
@@ -230,6 +232,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
                 if ground_truth_mps is not None:
                     fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm().numpy())
+        if verbose:
+            print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities))
                 
