@@ -97,6 +97,14 @@ class MPS(nn.Module):
         self.gauge_index = None
         self.device=device
         self.normalize()
+        
+        #store partial amplitudes corresponding to a particular spin config and rotation
+        self._partial_amplitudes = dict()
+        #store the spin configuration for the current batch
+        self._current_spin_config = None
+        #store the local rotations for current batch
+        self._current_rotations = None
+        self._cache_available = False
 
     def build_tensors(self):
         """Create the site tensors which define the MPS"""
@@ -303,6 +311,55 @@ class MPS(nn.Module):
             local_matrix = local_tensor[spin_index, ...]
         return local_matrix
 
+    def _expand_partial_amplitude(self, prev_amp, local_mat, direction):
+        """Contract the partial amplitude prev_amp with the local matrix provided.
+        direction = 'left' or 'right' : which side the local matrix sits on. """
+        def contractor(x, y):
+            return torch.einsum('sij,sjk->sik', x, y)
+        if direction == 'right':
+            return prev_amp.apply_mul(local_mat, contractor)
+        elif direction == 'left':
+            return local_mat.apply_mul(prev_amp, contractor)
+        raise ValueError("%s is not a valid direction" % direction)
+
+    def rotated_matrix_generator(self, spin_config, rotation=None):
+        """ Returns a function which, given a site index, returns the local matrix at that site
+            corresponding to the specified spin configuration and rotation."""
+        def rotated_local_matrix(site_index):
+            rot = None if rotation is None else rotation[:, site_index, ...]
+            return self.get_local_matrix(site_index, spin_config[:, site_index],
+                                         rotation=rot)
+        return rotated_local_matrix
+
+    def _compute_leftward_amplitudes(self, spin_config, rotation=None):
+        """Compute all partial amplitudes on intervals of the form [0, stop_index), 
+            for stop_index = 1, ..., L-2 """
+        left_amplitudes = dict()
+        local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+        for stop_index in range(1, self.L-1):
+            local_mat = local_matrix_gen(stop_index-1)
+            if stop_index == 1:
+                partial_amp = local_mat
+            else:
+                partial_amp = self._expand_partial_amplitude(partial_amp, local_mat, 'right')
+            left_amplitudes[stop_index] = partial_amp      
+        return left_amplitudes    
+    
+    def _compute_rightward_amplitudes(self, spin_config, rotation=None):
+        """Compute all partial amplitudes on intervals of the form [start_index, L), 
+            for start_index = 2, ... L-1 """
+        right_amplitudes = dict()
+        local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+        for start_index in range(self.L-1, 1, -1):
+            local_mat = local_matrix_gen(start_index)
+            if start_index == self.L-1:
+                partial_amp = local_mat
+            else:
+                partial_amp = self._expand_partial_amplitude(partial_amp, local_mat, 'left')
+            right_amplitudes[start_index] = partial_amp      
+        return right_amplitudes    
+    
+
     def contract_interval(self, spin_config, start_index, stop_index, rotation=None):
         """Contract a specific configuration of local tensors on the interval [start_index, stop_index)
              spin_config = (N, L) tensor listing spin configurations.
@@ -403,6 +460,23 @@ class MPS(nn.Module):
             blob = blob.apply_mul(self.get_local_tensor(i),contractor_upper)
             blob = blob.apply_mul(other.get_local_tensor(i).conj(), contractor_lower)
         return blob.numpy().item()
+
+    def _get_partial_amplitude_from_cache(self, start_index, stop_index):
+        """Returns the partial amplitude defined by contracting all MPS tensors 
+            in the interval [start_index, stop_index), with spin config for the current batch, 
+             including any local random unitaries. 
+             """
+        return self._partial_amplitudes[(start_index, stop_index)]
+    
+    def _cache_is_available(self):
+        """Check whether a batch spin configuration and set of local rotations have been cached"""
+        return (self._cache_available)
+    
+    def get_partial_amplitude(self, spin_config, start_index, stop_index,rotation=None):
+        if self._cache_is_available():
+            return self._get_partial_amplitude_from_cache(start_index, stop_index)
+        else:
+            return self.contract_interval(spin_config, start_index, stop_index, rotation=rotation)
 
     ### methods for computing various gradients
     def partial_deriv_twosite_psi(self, site_index, spin_config, 
