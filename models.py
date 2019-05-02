@@ -98,8 +98,16 @@ class MPS(nn.Module):
         self.device=device
         self.normalize()
         
+        #holds all leftward amplitudes when sweeping to the right
         self._leftward_amplitudes = None
+        #holds all rightward amplitudes when sweeping to the left
         self._rightward_amplitudes = None
+
+        #holds rightward amplitude when sweeping to the right
+        self._running_rightward_amplitude = None
+        # holds right-amplitude when sweeping to the left
+        self._running_leftward_amplitude = None
+
         self._cache_available = False
 
     def build_tensors(self):
@@ -327,33 +335,45 @@ class MPS(nn.Module):
                                          rotation=rot)
         return rotated_local_matrix
 
-    def _compute_leftward_amplitudes(self, spin_config, rotation=None):
+    def get_empty_partial_amplitude(self, N):
+        """ Partial amplitude corresponding to contracting an empty interval, with batch size N"""
+        return ComplexTensor(torch.ones((N,1,1),device=self.device),
+                             torch.zeros((N,1,1,),device=self.device))
+
+    def _compute_rightward_amplitudes(self, spin_config, rotation=None):
         """Compute all partial amplitudes on intervals of the form [0, stop_index), 
-            for stop_index = 1, ..., L-2 """
-        left_amplitudes = dict()
+            for stop_index = 0, ..., L-2 """
+        amplitudes = dict()
         local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+       
+        N=spin_config.size(0)
+        amplitudes[0] = self.get_empty_partial_amplitude(N)
+
         for stop_index in range(1, self.L-1):
             local_mat = local_matrix_gen(stop_index-1)
             if stop_index == 1:
                 partial_amp = local_mat
             else:
                 partial_amp = self._expand_partial_amplitude(partial_amp, local_mat, 'right')
-            left_amplitudes[stop_index] = partial_amp      
-        return left_amplitudes    
+            amplitudes[stop_index] = partial_amp      
+        return amplitudes    
     
-    def _compute_rightward_amplitudes(self, spin_config, rotation=None):
+    def _compute_leftward_amplitudes(self, spin_config, rotation=None):
         """Compute all partial amplitudes on intervals of the form [start_index, L), 
-            for start_index = 2, ... L-1 """
-        right_amplitudes = dict()
+            for start_index = 2, ... L """
+        amplitudes = dict()
         local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+        N = spin_config.size(0)
+        amplitudes[self.L] = self.get_empty_partial_amplitude(N)
+
         for start_index in range(self.L-1, 1, -1):
             local_mat = local_matrix_gen(start_index)
             if start_index == self.L-1:
                 partial_amp = local_mat
             else:
                 partial_amp = self._expand_partial_amplitude(partial_amp, local_mat, 'left')
-            right_amplitudes[start_index] = partial_amp      
-        return right_amplitudes    
+            amplitudes[start_index] = partial_amp      
+        return amplitudes    
     
     def _cache_leftward_amplitudes(self, spin_config, rotation=None):
         """Compute and cache all leftward amplitudes for the given spin config and rotation."""
@@ -478,6 +498,36 @@ class MPS(nn.Module):
             return self._get_partial_amplitude_from_cache(start_index, stop_index)
         else:
             return self.contract_interval(spin_config, start_index, stop_index, rotation=rotation)
+
+    def _get_left_partial_amplitude(self, site_index, spin_config, direction, rotation=None):
+        """Get the (rightward) partial amplitude for all sites to the left of site_index. 
+            direction = which way the two-site update sweep is moving:
+                if direction = 'left', the relevant amplitude should be cached as a 'rightward' amplitude.
+                if direction = 'right', the relevant amplitude will have been affected by the last update step, 
+                and needs to be updated."""
+
+        if direction == 'left':
+            return self._rightward_amplitudes[site_index]
+        elif direction == 'right': 
+            if site_index == 0:
+                N = spin_config.size(0)
+                amp =  self.get_empty_partial_amplitude(N)
+            else:   
+                local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+                #this site was affected by the previous update
+                locmat = local_matrix_gen(site_index-1)
+                if site_index == 1:
+                    amp = locmat
+                else:
+                    prevamp = self._running_rightward_amplitude
+                    amp = self._expand_partial_amplitude(prevamp, locmat, 'right')
+            #cache the new running left amplitude
+            self._running_rightward_amplitude = amp
+            return amp
+            
+
+
+
 
     ### methods for computing various gradients
     def partial_deriv_twosite_psi(self, site_index, spin_config, 

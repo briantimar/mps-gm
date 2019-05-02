@@ -120,6 +120,17 @@ class TestMPS(TestCase):
             self.assertAlmostEqual(np.sum(np.abs(targetx -
                                                  psix.prob_normalized(basis).numpy())), 0, places=6)
 
+    def test_left_amplitude_caching(self):
+        L = 10
+        psi = MPS(L, local_dim=2, bond_dim = 5)
+        x = torch.zeros((2,L),dtype=torch.long)
+        psi._cache_rightward_amplitudes(x)
+        for i in range(0, L-1):
+            aright = psi._get_left_partial_amplitude(i, x, 'right')
+            aleft = psi._get_left_partial_amplitude(i, x, 'left')
+            self.assertAlmostEqual( np.sum(np.abs((aright.numpy() - aleft.numpy()))), 0, places=6)
+
+
     def test_amplitudes(self):
         from qtools import pauli_exp
         L = 2
