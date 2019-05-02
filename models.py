@@ -500,7 +500,7 @@ class MPS(nn.Module):
             return self.contract_interval(spin_config, start_index, stop_index, rotation=rotation)
 
     def _get_left_partial_amplitude(self, site_index, spin_config, direction, rotation=None):
-        """Get the (rightward) partial amplitude for all sites to the left of site_index. 
+        """Get the (rightward) partial amplitude for all sites in the interval [0, site_index)
             direction = which way the two-site update sweep is moving:
                 if direction = 'left', the relevant amplitude should be cached as a 'rightward' amplitude.
                 if direction = 'right', the relevant amplitude will have been affected by the last update step, 
@@ -525,7 +525,31 @@ class MPS(nn.Module):
             self._running_rightward_amplitude = amp
             return amp
             
+    def _get_right_partial_amplitude(self, site_index, spin_config, direction, rotation=None):
+        """Get the (leftward) partial amplitude the interval [site_index, L)
+            direction = which way the two-site update sweep is moving:
+                if direction = 'right', the relevant amplitude should be cached as a 'leftward' amplitude.
+                if direction = 'left', the relevant amplitude will have been affected by the last update step, 
+                and needs to be updated."""
 
+        if direction == 'right':
+            return self._leftward_amplitudes[site_index]
+        elif direction == 'left': 
+            if site_index == self.L:
+                N = spin_config.size(0)
+                amp =  self.get_empty_partial_amplitude(N)
+            else:   
+                local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+                #this site was affected by the previous update
+                locmat = local_matrix_gen(site_index)
+                if site_index == 1:
+                    amp = locmat
+                else:
+                    prevamp = self._running_leftward_amplitude
+                    amp = self._expand_partial_amplitude(prevamp, locmat, 'left')
+            #cache the new running left amplitude
+            self._running_leftward_amplitude = amp
+            return amp
 
 
 
