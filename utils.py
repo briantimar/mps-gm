@@ -219,14 +219,14 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, normalize='left', 
                                     max_sv_to_keep=max_sv_to_keep,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty)
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=False)
             #backward sweep across the chain
             for i in range(L-3, 0, -1):
                 for __ in range(nstep):
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, normalize='right',
                                      max_sv_to_keep=max_sv_to_keep,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty)
+                                    learning_rate=learning_rate, s2_penalty=s2_penalty, use_cache=False)
             with torch.no_grad():
                 #record batched loss functions
                 losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))

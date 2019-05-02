@@ -107,6 +107,8 @@ class MPS(nn.Module):
         self._running_rightward_amplitude = None
         # holds right-amplitude when sweeping to the left
         self._running_leftward_amplitude = None
+        #which way the sweep is moving 
+        self._sweep_direction = None
 
         self._cache_available = False
 
@@ -524,6 +526,8 @@ class MPS(nn.Module):
             #cache the new running left amplitude
             self._running_rightward_amplitude = amp
             return amp
+        else:
+            raise ValueError("direction not set")
             
     def _get_right_partial_amplitude(self, site_index, spin_config, direction, rotation=None):
         """Get the (leftward) partial amplitude the interval [site_index, L)
@@ -550,18 +554,21 @@ class MPS(nn.Module):
             #cache the new running left amplitude
             self._running_leftward_amplitude = amp
             return amp
+        else:
+            raise ValueError("direction not set")
 
 
 
     ### methods for computing various gradients
     def partial_deriv_twosite_psi(self, site_index, spin_config, 
-                                            rotation=None):
+                                            rotation=None,use_cache=True):
         """Compute the gradient of Psi(spin_config) (with the given local
         unitaries applied) with respect to the two-site merged tensor at (site_index, site_index + 1)
         Returns: complex numpy array, indexing as: (batch, spin1, spin2, bond1, bond2), shape
                     (N, local_dim, local_dim, bond1, bond2) 
             spin_config: (N, L) int tensor of spin configurations
-            rotation:(N, L, d, d) complextensor of local unitaries applied."""
+            rotation:(N, L, d, d) complextensor of local unitaries applied.
+            use_cache: if true, use cached amplitudes (these will need to have been precomputed for the batch data)"""
         with torch.no_grad():
             spin_config = self.sanitize_spin_config(spin_config)
             N = spin_config.shape[0]
@@ -569,24 +576,28 @@ class MPS(nn.Module):
                 raise ValueError("Invalid index for twosite gradient")
 
             if site_index == 0:
-                left_contracted = ComplexTensor(torch.ones((N,1,1),device=self.device), torch.zeros((N,1,1,),device=self.device))
+                left_partial = self.get_empty_partial_amplitude(N)
             else:
                 #shape (N, 1, D1)
-                left_contracted = self.contract_interval(spin_config,0,site_index,
+                if use_cache:
+                    left_partial = self._get_left_partial_amplitude(site_index, spin_config, self._sweep_direction)
+                else:
+                    left_partial = self.contract_interval(spin_config,0,site_index,
                                                                 rotation=rotation)
             if site_index == self.L-2:
-                right_contracted = ComplexTensor(
-                    torch.ones((N, 1, 1),device=self.device), torch.zeros((N, 1, 1),device=self.device))
+                right_partial = self.get_empty_partial_amplitude(N)
             else:
                 #shape (N, D2, 1)
-                right_contracted = self.contract_interval(spin_config, site_index +2, self.L,
+                if use_cache:
+                    right_partial = self._get_right_partial_amplitude(site_index, spin_config, self._sweep_direction)
+                right_partial = self.contract_interval(spin_config, site_index +2, self.L,
                                                                 rotation=rotation)
             
-            D1 = left_contracted.shape[-1]
-            D2 = right_contracted.shape[-2]
+            D1 = left_partial.shape[-1]
+            D2 = right_partial.shape[-2]
             # grad_shape = (N, self.local_dim, self.local_dim, D1, D2 )
-            left_contracted = left_contracted.view(N,1, 1, D1, 1)
-            right_contracted = right_contracted.view(N,1, 1, 1, D2)
+            left_partial = left_partial.view(N,1, 1, D1, 1)
+            right_partial = right_partial.view(N,1, 1, 1, D2)
             if rotation is None:
                 #in this case the contracted unitary is a delta function in the 
                 # spin index, ie one-hot encoding
@@ -602,7 +613,7 @@ class MPS(nn.Module):
             U1_contracted = U1_contracted.view(N, self.local_dim, 1, 1, 1)
             U2_contracted = U2_contracted.view(N, 1, self.local_dim, 1, 1)
            
-            return left_contracted * right_contracted * (U1_contracted * U2_contracted)
+            return left_partial * right_partial * (U1_contracted * U2_contracted)
 
     def partial_deriv_twosite_norm(self, site_index):
         """ Compute the grad of the norm WRT two-site blob at specified index. 
@@ -613,7 +624,7 @@ class MPS(nn.Module):
             self.gauge_to(site_index)
         return self.merge(site_index).conj()
 
-    def partial_deriv_twosite_nll(self, site_index, spin_config, rotation=None):
+    def partial_deriv_twosite_nll(self, site_index, spin_config, rotation=None, use_cache=True):
         """ Compute the partial derivative of the negative-log-likelihood cost function
            WRT complex-valued twosite blob at the specd site.
              averaged over batch dimension."""
@@ -621,7 +632,7 @@ class MPS(nn.Module):
         N = spin_config.shape[0]
         with torch.no_grad():
             #paritial of the amplitude WRT blob, shape (N, d, d, D1, D2)
-            grad_psi = self.partial_deriv_twosite_psi(site_index, spin_config,rotation=rotation)
+            grad_psi = self.partial_deriv_twosite_psi(site_index, spin_config,rotation=rotation, use_cache=use_cache)
             #gradient of the WF normalization
             grad_norm = self.partial_deriv_twosite_norm(site_index)
             #amplitudes of the spin configurations
@@ -630,7 +641,7 @@ class MPS(nn.Module):
 
     def grad_twosite_nll(self, site_index, spin_config,
                          rotation=None, cutoff=1e-10, normalize='left',
-                         max_sv_to_keep=None):
+                         max_sv_to_keep=None, use_cache=True):
         """Computes the update tensor defined by the gradient of the negative log-likelihood cost function
          with respect to the real and imaginary parts of the two-site blob at site_index.
          
@@ -640,7 +651,7 @@ class MPS(nn.Module):
             cutoff: singular values below cutoff will be dropped when blob is split.
             normalize = 'left', 'right': how to normalize the blob after splitting.
             max_sv_to_keep: if not None, max number of singular values to keep at splitting.
-
+            use_cache: whether to use cached values for the partial amplitudes. 
             Note: psi will be gauged to site_index.
 
             Returns: gradient array of shape (local_dim, local_dim, bond_dim, bond_dim) holding the gradients
@@ -649,7 +660,7 @@ class MPS(nn.Module):
         self.gauge_to(site_index)
         #gradient of the log-prob WRT that complex matrix
         #note that A has to updated from the conjugate!
-        g = self.partial_deriv_twosite_nll(site_index, spin_config, rotation=rotation).numpy().conj()
+        g = self.partial_deriv_twosite_nll(site_index, spin_config, rotation=rotation,use_cache=use_cache).numpy().conj()
         return 2 * g
 
     def partial_deriv_twosite_trace_rho_squared(self, site_index):
@@ -700,7 +711,7 @@ class MPS(nn.Module):
     
     def do_sgd_step(self, site_index, spin_config, 
                     rotation=None,cutoff=1e-10,normalize='left',max_sv_to_keep=None,
-                    learning_rate=1e-3, s2_penalty=None):
+                    learning_rate=1e-3, s2_penalty=None, use_cache=True):
         """Perform a gradient-descent step by varying only the two-site blob with left edge at site_index.
            site_index: spatial index for the left edge of the two-site blob.
             spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
@@ -711,11 +722,12 @@ class MPS(nn.Module):
             learning_rate: for SGD update
             s2_penalty: if not None, penalty term corresponding to coefficient of the Renyi-2 entropy in 
             the cost function. Positive values will discourage high entropy.
+            use_cache: whether to use caching for partial amplitudes.
         """
         #gradient of the NLL cost function with respect to real and imag parts of blob
         nll_grad = self.grad_twosite_nll(site_index, spin_config,  
                                                 rotation=rotation,cutoff=cutoff,normalize=normalize,
-                                                max_sv_to_keep=max_sv_to_keep)
+                                                max_sv_to_keep=max_sv_to_keep, use_cache=use_cache)
         
         #gradient array of the renyi-2 entropy at site_index WRT blob
         if s2_penalty is not None:
