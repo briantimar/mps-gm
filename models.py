@@ -105,8 +105,10 @@ class MPS(nn.Module):
 
         #holds rightward amplitude when sweeping to the right
         self._running_rightward_amplitude = None
+        self._running_rightward_index = None
         # holds right-amplitude when sweeping to the left
         self._running_leftward_amplitude = None
+        self._running_leftward_index = None
         #which way the sweep is moving 
         self._sweep_direction = None
 
@@ -391,10 +393,14 @@ class MPS(nn.Module):
              spin_config = (N, L) tensor listing spin configurations.
             rotations: (N, L, d, d) complextensor of local unitaries applied.
             Returns: (N,D1, D2) tensor of amplitudes, D1 and D2 being the dangling bond dimensions
-            of the tensors at the edges of the interval."""
+            of the tensors at the edges of the interval.
+            If the interval is empty, a (N, 1, 1) ones ComplexTensor is returned"""
 
+        
         spin_config = self.sanitize_spin_config(spin_config)
-
+        if stop_index <= start_index:
+            return self.get_empty_partial_amplitude(spin_config.size(0))
+            
         def contractor(x, y):
             return torch.einsum('sij,sjk->sik', x, y)
 
@@ -484,23 +490,7 @@ class MPS(nn.Module):
             blob = blob.apply_mul(other.get_local_tensor(i).conj(), contractor_lower)
         return blob.numpy().item()
 
-    def _get_partial_amplitude_from_cache(self, start_index, stop_index):
-        """Returns the partial amplitude defined by contracting all MPS tensors 
-            in the interval [start_index, stop_index), with spin config for the current batch, 
-             including any local random unitaries. 
-             """
-        return self._partial_amplitudes[(start_index, stop_index)]
     
-    def _cache_is_available(self):
-        """Check whether a batch spin configuration and set of local rotations have been cached"""
-        return (self._cache_available)
-    
-    def get_partial_amplitude(self, spin_config, start_index, stop_index,rotation=None):
-        if self._cache_is_available():
-            return self._get_partial_amplitude_from_cache(start_index, stop_index)
-        else:
-            return self.contract_interval(spin_config, start_index, stop_index, rotation=rotation)
-
     def _get_left_partial_amplitude(self, site_index, spin_config, direction, rotation=None):
         """Get the (rightward) partial amplitude for all sites in the interval [0, site_index)
             direction = which way the two-site update sweep is moving:
@@ -515,16 +505,24 @@ class MPS(nn.Module):
                 N = spin_config.size(0)
                 amp =  self.get_empty_partial_amplitude(N)
             else:   
-                local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
-                #this site was affected by the previous update
-                locmat = local_matrix_gen(site_index-1)
-                if site_index == 1:
-                    amp = locmat
+                prev_index, prev_amp = self._running_rightward_index, self._running_rightward_amplitude
+                if prev_index == site_index:
+                    #bond has not moved, previous amplitude is still current
+                    amp = prev_amp
                 else:
-                    prevamp = self._running_rightward_amplitude
-                    amp = self._expand_partial_amplitude(prevamp, locmat, 'right')
+                    local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+                    #this site was affected by the previous update
+                    locmat = local_matrix_gen(site_index-1)
+                    if site_index == 1:
+                        amp = locmat
+                    else:
+                        if prev_index != site_index - 1:
+                            raise ValueError("Cached leftward amplitude is at the wrong index")
+                        prevamp = self._running_rightward_amplitude
+                        amp = self._expand_partial_amplitude(prevamp, locmat, 'right')
             #cache the new running left amplitude
             self._running_rightward_amplitude = amp
+            self._running_rightward_index = site_index
             return amp
         else:
             raise ValueError("direction not set")
@@ -543,16 +541,24 @@ class MPS(nn.Module):
                 N = spin_config.size(0)
                 amp =  self.get_empty_partial_amplitude(N)
             else:   
-                local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
-                #this site was affected by the previous update
-                locmat = local_matrix_gen(site_index)
-                if site_index == 1:
-                    amp = locmat
+                prev_index, prev_amp = self._running_leftward_index, self._running_leftward_amplitude
+                if prev_index == site_index:
+                    #in this case, bond has not moved, and previous amplitude is still current
+                    amp = prev_amp
                 else:
-                    prevamp = self._running_leftward_amplitude
-                    amp = self._expand_partial_amplitude(prevamp, locmat, 'left')
-            #cache the new running left amplitude
+                    if prev_index != site_index + 1:
+                        raise ValueError("Cached partial amp is at index %d, current = %d"%(prev_index,site_index))
+                    local_matrix_gen = self.rotated_matrix_generator(spin_config, rotation=rotation)
+                    #this site was affected by the previous update
+                    locmat = local_matrix_gen(site_index)
+                    if site_index == self.L-1:
+                        amp = locmat
+                    else:
+                        
+                        amp = self._expand_partial_amplitude(prev_amp, locmat, 'left')
+            #cache the new running left amplitude, and its location
             self._running_leftward_amplitude = amp
+            self._running_leftward_index = site_index
             return amp
         else:
             raise ValueError("direction not set")
@@ -580,7 +586,7 @@ class MPS(nn.Module):
             else:
                 #shape (N, 1, D1)
                 if use_cache:
-                    left_partial = self._get_left_partial_amplitude(site_index, spin_config, self._sweep_direction)
+                    left_partial = self._get_left_partial_amplitude(site_index, spin_config, self._sweep_direction,rotation=rotation)
                 else:
                     left_partial = self.contract_interval(spin_config,0,site_index,
                                                                 rotation=rotation)
@@ -589,7 +595,7 @@ class MPS(nn.Module):
             else:
                 #shape (N, D2, 1)
                 if use_cache:
-                    right_partial = self._get_right_partial_amplitude(site_index, spin_config, self._sweep_direction)
+                    right_partial = self._get_right_partial_amplitude(site_index+2, spin_config, self._sweep_direction, rotation=rotation)
                 right_partial = self.contract_interval(spin_config, site_index +2, self.L,
                                                                 rotation=rotation)
             
@@ -709,21 +715,51 @@ class MPS(nn.Module):
         self.set_local_tensor_from_numpy(site_index+1, Aright)
         self.gauge_to(site_index+1 if normalize=='left' else site_index)
     
+    def _init_leftward_cache(self, spin_config, rotation=None):
+        """Update all caches for a leftward sweep."""
+        self._cache_rightward_amplitudes(spin_config, rotation=rotation)
+        self._running_leftward_amplitude = None
+        self._running_leftward_index = self.L
+    
+    def _init_rightward_cache(self, spin_config, rotation=None):
+        """Update all caches for a rightward sweep."""
+        self._cache_leftward_amplitudes(spin_config, rotation=rotation)
+        self._running_rightward_amplitude = None
+        self._running_rightward_index = -1
+    
+    def init_sweep(self, direction, spin_config, rotation=None):
+        """Prepare caches, etc for a sweep in the specified direction"""
+        if direction not in ['left', 'right']:
+            raise ValueError("%s is not a valid sweep direction")
+        self._sweep_direction = direction
+        if direction == 'left':
+            self._init_leftward_cache(spin_config, rotation=rotation)
+        else:
+            self._init_rightward_cache(spin_config, rotation=rotation)
+        self._cache_available = True
+
+
     def do_sgd_step(self, site_index, spin_config, 
-                    rotation=None,cutoff=1e-10,normalize='left',max_sv_to_keep=None,
-                    learning_rate=1e-3, s2_penalty=None, use_cache=True):
+                    rotation=None,cutoff=1e-10, max_sv_to_keep=None,
+                    learning_rate=1e-3, s2_penalty=None,
+                    direction='right', use_cache=True):
         """Perform a gradient-descent step by varying only the two-site blob with left edge at site_index.
            site_index: spatial index for the left edge of the two-site blob.
             spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
             rotation: local unitaries to apply to the MPS
             cutoff: singular values below cutoff will be dropped when blob is split.
-            normalize = 'left', 'right': how to normalize the blob after splitting.
+           
             max_sv_to_keep: if not None, max number of singular values to keep at splitting.
             learning_rate: for SGD update
             s2_penalty: if not None, penalty term corresponding to coefficient of the Renyi-2 entropy in 
             the cost function. Positive values will discourage high entropy.
-            use_cache: whether to use caching for partial amplitudes.
+            direction = 'left', 'right': which way the sweep is moving. 
+            use_cache: whether to use caching for partial amplitudes. 
         """
+        if use_cache and not self._cache_available:
+            raise ValueError("Cache has not been initialized!")
+        #which of the two local matrices to normalize.
+        normalize = 'left' if direction=='right' else 'right'
         #gradient of the NLL cost function with respect to real and imag parts of blob
         nll_grad = self.grad_twosite_nll(site_index, spin_config,  
                                                 rotation=rotation,cutoff=cutoff,normalize=normalize,

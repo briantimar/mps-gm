@@ -140,6 +140,43 @@ class TestMPS(TestCase):
             aleft = psi._get_right_partial_amplitude(i, x, 'left')
             self.assertAlmostEqual( np.sum(np.abs((aright.numpy() - aleft.numpy()))), 0, places=6)
 
+    def test_cached_amplitude_accuracy(self):
+        L = 10
+        D = 2
+        psi = MPS(L, local_dim=2, bond_dim =D)
+        x = torch.zeros((2, L), dtype=torch.long)
+        theta = (np.pi/2) * torch.ones_like(x, dtype=torch.float)
+        phi = torch.zeros_like(x, dtype = torch.float)
+        from qtools import pauli_exp
+        rotation = pauli_exp(theta, phi)
+
+        psi.gauge_to(0)
+        psi.init_sweep('right', x, rotation=rotation)
+        for i in range(0, L-1):
+            lamp_exact = psi.contract_interval(x, 0, i, rotation=rotation).numpy()
+            lamp_cached = psi._get_left_partial_amplitude(i, x, 'right',rotation=rotation).numpy()
+            ramp_exact = psi.contract_interval(x, i+2, L, rotation=rotation).numpy()
+            ramp_cached = psi._get_right_partial_amplitude(i+2, x, 'right', rotation=rotation).numpy()
+            
+            self.assertAlmostEqual(np.sum(np.abs(lamp_exact - lamp_cached)), 0, places=6)
+            self.assertAlmostEqual(np.sum(np.abs(ramp_exact - ramp_cached)), 0, places=6)
+            psi.gauge_to(i+1)
+
+        psi.init_sweep('left', x, rotation=rotation)
+        psi.gauge_to(L-2)
+        for i in range(L-3, 0,-1):
+            lamp_exact = psi.contract_interval(x, 0, i, rotation=rotation).numpy()
+            lamp_cached = psi._get_left_partial_amplitude(i, x, 'left',rotation=rotation).numpy()
+            ramp_exact = psi.contract_interval(x, i+2, L, rotation=rotation).numpy()
+            ramp_cached = psi._get_right_partial_amplitude(i+2, x, 'left', rotation=rotation).numpy()
+            
+            self.assertAlmostEqual(np.sum(np.abs(lamp_exact - lamp_cached)), 0, places=6)
+            self.assertAlmostEqual(np.sum(np.abs(ramp_exact - ramp_cached)), 0, places=6)
+            
+            psi.gauge_to(i)
+
+
+        
 
     def test_amplitudes(self):
         from qtools import pauli_exp
