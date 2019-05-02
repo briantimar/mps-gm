@@ -98,12 +98,8 @@ class MPS(nn.Module):
         self.device=device
         self.normalize()
         
-        #store partial amplitudes corresponding to a particular spin config and rotation
-        self._partial_amplitudes = dict()
-        #store the spin configuration for the current batch
-        self._current_spin_config = None
-        #store the local rotations for current batch
-        self._current_rotations = None
+        self._leftward_amplitudes = None
+        self._rightward_amplitudes = None
         self._cache_available = False
 
     def build_tensors(self):
@@ -359,6 +355,14 @@ class MPS(nn.Module):
             right_amplitudes[start_index] = partial_amp      
         return right_amplitudes    
     
+    def _cache_leftward_amplitudes(self, spin_config, rotation=None):
+        """Compute and cache all leftward amplitudes for the given spin config and rotation."""
+        self._leftward_amplitudes = self._compute_leftward_amplitudes(spin_config, rotation=rotation)
+    
+    def _cache_rightward_amplitudes(self, spin_config, rotation=None):
+        """Compute and cache all rightward amplitudes for the given spin config and rotation."""
+        self._rightward_amplitudes = self._compute_rightward_amplitudes(spin_config, rotation=rotation)
+    
 
     def contract_interval(self, spin_config, start_index, stop_index, rotation=None):
         """Contract a specific configuration of local tensors on the interval [start_index, stop_index)
@@ -372,10 +376,7 @@ class MPS(nn.Module):
         def contractor(x, y):
             return torch.einsum('sij,sjk->sik', x, y)
 
-        def rotated_local_matrix(site_index):
-            rot = None if rotation is None else rotation[:, site_index, ...]
-            return self.get_local_matrix(site_index, spin_config[:, site_index],
-                                         rotation=rot)
+        rotated_local_matrix = self.rotated_matrix_generator(spin_config, rotation=rotation)
 
         m = rotated_local_matrix(start_index)
         for site_index in range(start_index+1, stop_index):
