@@ -74,6 +74,9 @@ class ComplexTensor:
     
     def display(self, items=10):
         return self.numpy()[:items]
+    
+    def to(self, **kwargs):
+        return ComplexTensor(self.real.to(**kwargs), self.imag.to(**kwargs))
 
 
 
@@ -126,6 +129,11 @@ class MPS(nn.Module):
             self.real_tensors.append(dict(real=bulk_r, imag=bulk_i))
         self.tensors.append(right_tensor)
         self.real_tensors.append(dict(real=right_r, imag=right_i))
+
+    def to(self, **kwargs):
+        """ Move all MPS tensors to a different data type or device."""
+        for i in range(self.L):
+            self.tensors[i] = self.tensors[i].to(**kwargs)
 
     def init_tensors(self):
         """ Initialize all tensors, with normally-distributed values
