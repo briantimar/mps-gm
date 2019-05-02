@@ -108,8 +108,8 @@ def pauli_exp(theta, phi):
     if theta.shape != phi.shape:
         raise ValueError
 
-    rU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
-    iU = torch.empty((*theta.shape,2,2),dtype=theta.dtype)
+    rU = torch.empty((*theta.shape,2,2),dtype=theta.dtype,device=theta.device)
+    iU = torch.empty((*theta.shape,2,2),dtype=theta.dtype,device=theta.device)
     ct, st = (theta/2).cos(), (theta/2).sin()
     cp, sp = (phi/2).cos(), (phi/2).sin()
 

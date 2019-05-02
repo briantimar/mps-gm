@@ -231,7 +231,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 #record batched loss functions
                 losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
                 if ground_truth_mps is not None:
-                    fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm().numpy())
+                    fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
     return dict(loss=np.asarray(losses),

@@ -67,7 +67,7 @@ class ComplexTensor:
         return self.real.size(i)
 
     def numpy(self):
-        return self.real.detach().numpy() + 1j * self.imag.detach().numpy()
+        return self.real.detach().cpu().numpy() + 1j * self.imag.detach().cpu().numpy()
     
     def mean(self,dim):
         return ComplexTensor(self.real.mean(dim), self.imag.mean(dim))
@@ -83,7 +83,7 @@ class ComplexTensor:
 class MPS(nn.Module):
     """ MPS with complex amplitudes """
 
-    def __init__(self, L, local_dim, bond_dim):
+    def __init__(self, L, local_dim, bond_dim, device=torch.device('cpu')):
         """ L =  size of the physical system
         local_dim = dimensionality of each local hilbert space
         bond_dimension = uniform bond dimension"""
@@ -95,7 +95,7 @@ class MPS(nn.Module):
         self.init_tensors()
         #the site to which the mps is gauged, if any
         self.gauge_index = None
-
+        self.device=device
         self.normalize()
 
     def build_tensors(self):
@@ -134,6 +134,7 @@ class MPS(nn.Module):
         """ Move all MPS tensors to a different data type or device."""
         for i in range(self.L):
             self.tensors[i] = self.tensors[i].to(**kwargs)
+        self.device = kwargs.get('device', self.device)
 
     def init_tensors(self):
         """ Initialize all tensors, with normally-distributed values
@@ -193,6 +194,9 @@ class MPS(nn.Module):
             return self.norm_full()
         return self.site_contraction(self.gauge_index)
 
+    def norm_scalar(self):
+        return self.norm().detach().cpu().item()
+
     def guarantee_is_gauged(self):
         """ Ensures that a gauge index exists"""
         if self.gauge_index is None:
@@ -210,7 +214,10 @@ class MPS(nn.Module):
         self.tensors[site_index].imag.data = A.imag.data
 
     def set_local_tensor_from_numpy(self, site_index, A):
-        ct = ComplexTensor(torch.tensor(A.real), torch.tensor(A.imag))
+        """ Update the local tensor at site_index with values from the complex numpy array A.
+            tensor stored on self.device."""
+        ct = ComplexTensor(torch.tensor(A.real,device=self.device),
+                                         torch.tensor(A.imag,device=self.device))
         self.set_local_tensor(site_index, ct)
 
     def left_normalize_at(self, site_index, cutoff=1e-16, max_sv_to_keep=None):
@@ -413,14 +420,14 @@ class MPS(nn.Module):
                 raise ValueError("Invalid index for twosite gradient")
 
             if site_index == 0:
-                left_contracted = ComplexTensor(torch.ones((N,1,1)), torch.zeros((N,1,1)))
+                left_contracted = ComplexTensor(torch.ones((N,1,1),device=self.device), torch.zeros((N,1,1,),device=self.device))
             else:
                 #shape (N, 1, D1)
                 left_contracted = self.contract_interval(spin_config,0,site_index,
                                                                 rotation=rotation)
             if site_index == self.L-2:
                 right_contracted = ComplexTensor(
-                    torch.ones((N, 1, 1)), torch.zeros((N, 1, 1)))
+                    torch.ones((N, 1, 1),device=self.device), torch.zeros((N, 1, 1),device=self.device))
             else:
                 #shape (N, D2, 1)
                 right_contracted = self.contract_interval(spin_config, site_index +2, self.L,
