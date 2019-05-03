@@ -27,7 +27,7 @@ def load_random(L, D):
 
 def train(type, L, D, tr_set_size,
                 learning_rate, batch_size, epochs, s2_schedule=None,
-             cutoff=1e-10,seed=None,):
+             cutoff=1e-10, max_sv_to_keep = None,seed=None,):
     """ Train a model on dataset of specified type, size, and bond dim.
     returns: trained MPS, logdict"""
 
@@ -41,58 +41,79 @@ def train(type, L, D, tr_set_size,
     
     angles = angles[:tr_set_size]
     outcomes = outcomes[:tr_set_size]
-    return do_training(angles, outcomes, learning_rate,
+    model, logdict= do_training(angles, outcomes, learning_rate,
                             batch_size=batch_size,epochs=epochs,
                             s2_schedule=s2_schedule,cutoff=cutoff,
-                            ground_truth_mps=psi_gt,seed=seed)
-
+                            max_sv_to_keep=max_sv_to_keep,
+                            ground_truth_mps=None,seed=seed)
+    f = np.abs(model.overlap(psi_gt)) / model.norm_scalar() 
+    return f
 
 if __name__ == '__main__':
 
-    system_sizes = np.arange(4, 30, 4, dtype=int)
+    system_sizes = np.arange(4, 22, 2, dtype=int)
 
     learning_rate = 1e-2
-    batch_size = 256
-    epochs = 3
-    tr_set_sizes = np.linspace(1e3,1e4,10,dtype=int)
+    batch_size = 1028
+    epochs = 10
+    tr_set_sizes = np.linspace(2e3,1.5e4,40,dtype=int)
+    max_sv = 20
+    max_sv_to_keep = lambda ep: 2 if ep < 1 else max_sv
+    cutoff=1e-2
+    use_cache = True
+    s2_schedule = lambda ep: np.exp(-ep)
+
+
+    target_fidelity = .95
 
     #for the random states, bond dimensions to try
-    bond_dims = np.arange(2, 20, 4, dtype=int)
+    bond_dims = np.arange(2, 20, 2, dtype=int)
 
     np.save("data/tr_set_sizes", tr_set_sizes)
     np.save("data/system_sizes", system_sizes)
 
     #fix bond dimension and scale L
     D = 2
-    nseed = 1
-    fidelities_scaling_L = np.empty((len(system_sizes), len(tr_set_sizes), nseed))
+    nseed = 5
+    fidelities_scaling_L = -1 * np.ones((len(system_sizes), len(tr_set_sizes), nseed))
     print("now scaling system size, random targets")
     for i in range(len(system_sizes)):
         L = int(system_sizes[i])
-        for j in range(len(tr_set_sizes)):
-            N = int(tr_set_sizes[j])
-            for k in range(nseed):
-                seed=k
+        for k in range(nseed):
+            seed=k
+            f=-1
+            j = 0
+            while j < len(tr_set_sizes) and f < target_fidelity:
+                N = int(tr_set_sizes[j])
                 print("training with L, N, D, seed =  ",L, N,D, seed)
-                psi, logdict = train('random',L,D,N,learning_rate,batch_size,epochs,seed=seed)
-                fidelities_scaling_L[i,j,k] = logdict['fidelity'][-1]
+                f = train('random',L,D,N,learning_rate,batch_size,epochs,
+                                    s2_schedule=s2_schedule, max_sv_to_keep=max_sv_to_keep,cutoff=cutoff,seed=seed)
+                fidelities_scaling_L[i,j,k] = f
+                print("f = ", f)
+                j += 1
+        
 
     np.save("data/rand_fidelities_scaling_L_D=%d"%D, fidelities_scaling_L)
 
     #fix L and scale bond dimension
     L=4
     nseed = 5
-    fidelities_scaling_D = np.empty(
+    fidelities_scaling_D = -1 * np.ones(
         (len(bond_dims), len(tr_set_sizes), nseed))
     print("now scaling bond dim, random targets")
+   
     for i in range(len(bond_dims)):
         D = int(bond_dims[i])
-        for j in range(len(tr_set_sizes)):
-            N = int(tr_set_sizes[j])
-            for k in range(nseed):
-                seed = k
-                print("training with L, N,D, seed =  ", L, N,D, seed)
-                psi, logdict = train(
-                    'random', L, D, N, learning_rate, batch_size, epochs, seed=seed)
-                fidelities_scaling_D[i, j, k] = logdict['fidelity'][-1]
+        for k in range(nseed):
+            seed=k
+            f=-1
+            j = 0
+            while j < len(tr_set_sizes) and f < target_fidelity:
+                N = int(tr_set_sizes[j])
+                print("training with L, N, D, seed =  ",L, N,D, seed)
+                f = train('random',L,D,N,learning_rate,batch_size,epochs,
+                                    s2_schedule=s2_schedule, max_sv_to_keep=max_sv_to_keep,cutoff=cutoff,seed=seed)
+                fidelities_scaling_D[i,j,k] = f
+                print("f = ", f)
+                j += 1
     np.save("data/rand_fidelities_scaling_D_L=%d"%L, fidelities_scaling_D)

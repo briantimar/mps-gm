@@ -182,10 +182,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         and local unitaires.
         epochs: int, number of epochs to train
         learning_rate : lr for gradient descent
-        s2_schedule: if not None, iterable of s2 penalty coefficients, of length epochs * len(dataloader)
+        s2_schedule: if not None, function of batch number which returns s2 penalty
         nstep: how many gradient descent updates to make at each bond.
         cutoff: threshold below which to drop singular values
-        max_sv_to_keep: if not None, max number of singular vals to keep at each bond.
+        max_sv_to_keep: if not None, max number of singular vals to keep at each bond, or function of batch number 
+        that returns such
         ground_truth_mps: if not None, an MPS against which the model's fidelity will be checked after
         every sweep.
         use_cache: whether to cache partial amplitudes during the sweeps.
@@ -204,13 +205,18 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     fidelities = []
     for ep in range(epochs):
         t0=time.time()
+        s2_penalty = s2_schedule(ep)
+        try:
+            max_sv = max_sv_to_keep(ep)
+        except TypeError:
+            max_sv = max_sv_to_keep
+            
         for step, inputs in enumerate(dataloader):
             #get torch tensors representing measurement outcomes, and corresponding local unitaries
             spinconfig = inputs['samples']
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
-            s2_penalty = s2_schedule[ep*len(dataloader) + step]
             
             #forward sweep across the chain
             if use_cache:
@@ -222,7 +228,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                    
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, direction='right',
-                                    max_sv_to_keep=max_sv_to_keep,
+                                    max_sv_to_keep=max_sv,
                                     learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=use_cache)
             #backward sweep across the chain
             if use_cache:
@@ -233,7 +239,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 for __ in range(nstep):
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, direction='left',
-                                     max_sv_to_keep=max_sv_to_keep,
+                                     max_sv_to_keep=max_sv,
                                     learning_rate=learning_rate, s2_penalty=s2_penalty, use_cache=use_cache)
             with torch.no_grad():
                 #record batched loss functions
@@ -264,7 +270,8 @@ def draw_random(mps, N):
 def do_training(angles, pauli_outcomes, 
                 learning_rate, batch_size, epochs,
                  s2_schedule=None, cutoff=1e-10,
-                ground_truth_mps=None, seed=None):
+                 max_sv_to_keep = None,
+                ground_truth_mps=None, use_cache=True, seed=None):
     """ Train MPS on given angles and outcomes.
         angles: (N, L, 2) numpy array of theta, phi angles
         pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
@@ -293,6 +300,8 @@ def do_training(angles, pauli_outcomes,
     model = MPS(L, local_dim=2, bond_dim=2)
     logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
                                     s2_schedule=s2_schedule,cutoff=cutoff,
+                                    max_sv_to_keep=max_sv_to_keep,
+                                    use_cache=use_cache,
                                     ground_truth_mps=ground_truth_mps)
     return model, logdict
 

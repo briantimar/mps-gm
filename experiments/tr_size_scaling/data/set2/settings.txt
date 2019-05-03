@@ -1,0 +1,9 @@
+    learning_rate = 1e-2
+    batch_size = 1028
+    epochs = 10
+    tr_set_sizes = np.linspace(2e3,2e4,20,dtype=int)
+    max_sv = 20
+    max_sv_to_keep = lambda ep: 2 if ep < 1 else max_sv
+    cutoff=1e-2
+    use_cache = True
+    s2_schedule = lambda ep: np.exp(-ep)
