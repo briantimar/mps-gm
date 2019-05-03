@@ -83,7 +83,7 @@ if __name__ == '__main__':
             seed=k
             f=-1
             j = 0
-            while j < len(tr_set_sizes) and f < target_fidelity:
+            while j < len(tr_set_sizes): #and f < target_fidelity:
                 N = int(tr_set_sizes[j])
                 print("training with L, N, D, seed =  ",L, N,D, seed)
                 f = train('random',L,D,N,learning_rate,batch_size,epochs,
@@ -108,7 +108,7 @@ if __name__ == '__main__':
             seed=k
             f=-1
             j = 0
-            while j < len(tr_set_sizes) and f < target_fidelity:
+            while j < len(tr_set_sizes): #and f < target_fidelity:
                 N = int(tr_set_sizes[j])
                 print("training with L, N, D, seed =  ",L, N,D, seed)
                 f = train('random',L,D,N,learning_rate,batch_size,epochs,

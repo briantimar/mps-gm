@@ -64,7 +64,7 @@ if __name__ == '__main__':
     s2_schedule = lambda ep: np.exp(-ep)
 
 
-    target_fidelity = .99
+    target_fidelity = .95
 
     #for the random states, bond dimensions to try
     bond_dims = np.arange(2, 20, 2, dtype=int)
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     np.save("data/rand_fidelities_scaling_L_D=%d"%D, fidelities_scaling_L)
 
     #fix L and scale bond dimension
-    L=8
+    L=4
     nseed = 5
     fidelities_scaling_D = -1 * np.ones(
         (len(bond_dims), len(tr_set_sizes), nseed))
