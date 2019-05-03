@@ -400,7 +400,7 @@ class MPS(nn.Module):
         spin_config = self.sanitize_spin_config(spin_config)
         if stop_index <= start_index:
             return self.get_empty_partial_amplitude(spin_config.size(0))
-            
+
         def contractor(x, y):
             return torch.einsum('sij,sjk->sik', x, y)
 
@@ -646,17 +646,17 @@ class MPS(nn.Module):
             return ((grad_psi * amplitude.conj()).div( amplitude.norm())).mean(0)* -1.0  + grad_norm
 
     def grad_twosite_nll(self, site_index, spin_config,
-                         rotation=None, cutoff=1e-10, normalize='left',
-                         max_sv_to_keep=None, use_cache=True):
+                         rotation=None, normalize='left',
+                         use_cache=True):
         """Computes the update tensor defined by the gradient of the negative log-likelihood cost function
          with respect to the real and imaginary parts of the two-site blob at site_index.
          
             site_index: spatial index for the left edge of the two-site blob.
             spin_config: (batch_size, L) tensor of integer indices of observed spin configurations.
             rotation: local unitaries to apply to the MPS
-            cutoff: singular values below cutoff will be dropped when blob is split.
+            
             normalize = 'left', 'right': how to normalize the blob after splitting.
-            max_sv_to_keep: if not None, max number of singular values to keep at splitting.
+            
             use_cache: whether to use cached values for the partial amplitudes. 
             Note: psi will be gauged to site_index.
 
@@ -762,8 +762,8 @@ class MPS(nn.Module):
         normalize = 'left' if direction=='right' else 'right'
         #gradient of the NLL cost function with respect to real and imag parts of blob
         nll_grad = self.grad_twosite_nll(site_index, spin_config,  
-                                                rotation=rotation,cutoff=cutoff,normalize=normalize,
-                                                max_sv_to_keep=max_sv_to_keep, use_cache=use_cache)
+                                                rotation=rotation,normalize=normalize,
+                                                 use_cache=use_cache)
         
         #gradient array of the renyi-2 entropy at site_index WRT blob
         if s2_penalty is not None:

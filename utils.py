@@ -211,6 +211,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
             s2_penalty = s2_schedule[ep*len(dataloader) + step]
+            
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -218,6 +219,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 for __ in range(nstep):
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
                     # with respect to this 'blob'; updates merged tensor accordingly, then breaks back to local tensors
+                   
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, direction='right',
                                     max_sv_to_keep=max_sv_to_keep,
@@ -240,6 +242,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
+            print("Model shape: ", mps_model.shape)
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities))
                 
