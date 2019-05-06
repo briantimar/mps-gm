@@ -197,7 +197,7 @@ def build_random_mps(L, bond_dim):
     return MPS(L,local_dim=2,bond_dim=bond_dim)
 
 def do_local_sgd_training(mps_model, dataloader, epochs, 
-                            learning_rate, s2_schedule=None,nstep=1,
+                            learning_rate, s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
                             ground_truth_mps = None, verbose=False, use_cache=True, 
                             record_eigs = True):
@@ -207,8 +207,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         dataloader: pytorch dataloader which yields dictionaries holding batches of spin configurations
         and local unitaires.
         epochs: int, number of epochs to train
-        learning_rate : lr for gradient descent
-        s2_schedule: if not None, function of batch number which returns s2 penalty
+        learning_rate : lr for gradient descent. Scalar, or function of epoch which returns scalar.
+        s2_penalty: coefficient of S2 regularization term. if not None, scalar or function of epoch which returns scalar
         nstep: how many gradient descent updates to make at each bond.
         cutoff: threshold below which to drop singular values
         max_sv_to_keep: if not None, max number of singular vals to keep at each bond, or function of batch number 
@@ -222,11 +222,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
                     'max_bond_dim' -> array of max bond dimensions
                     'eigenvalues' -> eigenvalues when partitioning at chain center, if requested
+            These quantities are recorded at the end of each epoch.
         """
     from models import ComplexTensor
     import time
-    if s2_schedule is None:
-        s2_schedule = np.zeros(len(dataloader) * epochs)
+    if s2_penalty is None:
+        s2_penalty = np.zeros(len(dataloader) * epochs)
     #system size
     L = mps_model.L
     #logging the loss function
@@ -237,21 +238,29 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     max_bond_dim = []
     #record eigenspectrum cutting across chain center
     eigenvalues = []
+
     for ep in range(epochs):
         t0=time.time()
-        s2_penalty = s2_schedule(ep)
+        #load lr, s2 penalty, and max sv's for the epoch
+        try:
+            _s2_penalty = s2_penalty(ep)
+        except TypeError:
+            _s2_penalty = s2_penalty
         try:
             max_sv = max_sv_to_keep(ep)
         except TypeError:
             max_sv = max_sv_to_keep
+        try:
+            lr = learning_rate(ep)
+        except TypeError:
+            lr = learning_rate
             
         for step, inputs in enumerate(dataloader):
             #get torch tensors representing measurement outcomes, and corresponding local unitaries
             spinconfig = inputs['samples']
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
-
-            
+ 
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -267,7 +276,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, direction='right',
                                     max_sv_to_keep=max_sv,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=use_cache)
+                                    learning_rate=lr, s2_penalty=_s2_penalty,use_cache=use_cache)
                 
             #backward sweep across the chain
             if use_cache:
@@ -279,14 +288,14 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     mps_model.do_sgd_step(i, spinconfig,
                                     rotation=rotations, cutoff=cutoff, direction='left',
                                      max_sv_to_keep=max_sv,
-                                    learning_rate=learning_rate, s2_penalty=s2_penalty, use_cache=use_cache)
-            with torch.no_grad():
-                #record batched loss functions
-                losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
-                if ground_truth_mps is not None:
-                    fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
-                max_bond_dim.append(mps_model.max_bond_dim)
-                
+                                    learning_rate=lr, s2_penalty=_s2_penalty, use_cache=use_cache)
+        with torch.no_grad():
+            #record batched loss functions
+            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
+            if ground_truth_mps is not None:
+                fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
+            max_bond_dim.append(mps_model.max_bond_dim)
+            
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
@@ -312,7 +321,7 @@ def draw_random(mps, N):
 
 def do_training(angles, pauli_outcomes, 
                 learning_rate, batch_size, epochs,
-                 s2_schedule=None, cutoff=1e-10,
+                 s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, use_cache=True, seed=None):
     """ Train MPS on given angles and outcomes.
@@ -342,7 +351,7 @@ def do_training(angles, pauli_outcomes,
     #train a model
     model = MPS(L, local_dim=2, bond_dim=2)
     logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
-                                    s2_schedule=s2_schedule,cutoff=cutoff,
+                                    s2_penalty=s2_penalty,cutoff=cutoff,
                                     max_sv_to_keep=max_sv_to_keep,
                                     use_cache=use_cache,
                                     ground_truth_mps=ground_truth_mps)
