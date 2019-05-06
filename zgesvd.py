@@ -2,6 +2,7 @@
 # http://projects.scipy.org/numpy/ticket/990
 # - LS adapting  MZ dgesvd
 import numpy as np
+from numpy.linalg import LinAlgError
 import ctypes
 from ctypes import CDLL, POINTER, c_int, byref, c_char, c_double, c_char_p
 import sys
