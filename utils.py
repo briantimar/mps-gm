@@ -212,7 +212,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     L = mps_model.L
     #logging the loss function
     losses = []
+    #if ground-truth MPS is known, compute fidelity at each step
     fidelities = []
+    # record max bond_dim
+    max_bond_dim = []
     for ep in range(epochs):
         t0=time.time()
         s2_penalty = s2_schedule(ep)
@@ -256,11 +259,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
                 if ground_truth_mps is not None:
                     fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
+                max_bond_dim.append(mps_model.max_bond_dim)
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
     return dict(loss=np.asarray(losses),
-                fidelity=np.asarray(fidelities))
+                fidelity=np.asarray(fidelities),
+                max_bond_dim=max_bond_dim)
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
