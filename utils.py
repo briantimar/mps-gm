@@ -385,14 +385,39 @@ def do_training(angles, pauli_outcomes,
                                 use_cache=use_cache, seed=seed,record_eigs=record_eigs, 
                                 record_s2=record_s2, verbose=verbose)
 
-def evaluate(angles, pauli_outcomes, epochs, 
-                learning_rates, s2_penalties, cutoff=1e-10,
-                max_sv_to_keep=None, use_cache=True, seed=None, 
-                record_eigs=False, record_s2=False):
-    """ Compute the NLL on the given validation 
+def compute_NLL(meas_ds,
+                model):
+    """ Compute the NLL loss function using the given MPS model"""
+    
+    from models import ComplexTensor
+    spins_all = meas_ds[:]['samples']
+    Ui = meas_ds[:]['rotations']['imag']
+    Ur = meas_ds[:]['rotations']['real']
+    U = ComplexTensor(Ur, Ui)
+    return model.nll_loss(spins_all, rotation=U)
+
+
+def evaluate(train_ds, val_ds, 
+                learning_rate, batch_size, epochs,
+                 s2_penalty=None, cutoff=1e-10,
+                 max_sv_to_keep = None,
+                 use_cache=True, seed=None, 
+                 verbose=False):
+    """ Train a model on the given training MeasurementDataset, then compute its NLL cost function on 
+    the held-out validation set.
+    Returns: trained model, validation loss."""
+    model, __ =  train_from_dataset(train_ds,
+                        learning_rate, batch_size, epochs,
+                        s2_penalty=s2_penalty, cutoff=cutoff,
+                        max_sv_to_keep=max_sv_to_keep,
+                        ground_truth_mps=None, use_cache=use_cache, seed=seed, 
+                        record_eigs=False, record_s2=False, verbose=verbose)
+    val_loss = compute_NLL(val_ds, model)
+    return model, val_loss
 
 
 class MeasurementDataset(TensorDataset):
+    """ Holds local unitaries (key: rotations) and corresponding outcomes (key: samples)"""
     def __init__(self, samples, rotations):
         super().__init__()
         if samples.shape[0] != rotations.shape[0]:
