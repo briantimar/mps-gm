@@ -200,7 +200,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             learning_rate, s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
                             ground_truth_mps = None, verbose=False, use_cache=True, 
-                            record_eigs = True):
+                            record_eigs=True, record_s2=True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -217,11 +217,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         every sweep.
         use_cache: whether to cache partial amplitudes during the sweeps.
         record_eigs: whether to record eigenvalues of the half-chain density op.
+        record_s2: whether to record the Renyi-2 entropy of the half-chain density op.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
                     'max_bond_dim' -> array of max bond dimensions
                     'eigenvalues' -> eigenvalues when partitioning at chain center, if requested
+                    's2' -> renyi-2 entropy, if requested
             These quantities are recorded at the end of each epoch.
         """
     from models import ComplexTensor
@@ -238,6 +240,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     max_bond_dim = []
     #record eigenspectrum cutting across chain center
     eigenvalues = []
+    #Renyi-2 entropy cutting across chain center
+    s2 = []
 
     for ep in range(epochs):
         t0=time.time()
@@ -265,9 +269,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
             for i in range(L-1):
-                if record_eigs and i == L//2 - 1:
-                    eigs = mps_model.get_eigenvalues(i)
-                    eigenvalues.append(eigs)
+                if i == L//2 - 1:
+                    if record_eigs:
+                        eigs = mps_model.get_eigenvalues(i)
+                        eigenvalues.append(eigs)
+                    if record_s2:
+                        s2.append(mps_model.renyi2_entropy(i))
                 for __ in range(nstep):
                 
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
@@ -302,7 +309,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities),
                 max_bond_dim=max_bond_dim, 
-                eigenvalues=eigenvalues)
+                eigenvalues=eigenvalues,
+                s2=s2)
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
