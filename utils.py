@@ -199,7 +199,8 @@ def build_random_mps(L, bond_dim):
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, s2_schedule=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
-                            ground_truth_mps = None, verbose=False, use_cache=True):
+                            ground_truth_mps = None, verbose=False, use_cache=True, 
+                            record_eigs = True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -215,9 +216,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         ground_truth_mps: if not None, an MPS against which the model's fidelity will be checked after
         every sweep.
         use_cache: whether to cache partial amplitudes during the sweeps.
+        record_eigs: whether to record eigenvalues of the half-chain density op.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
+                    'max_bond_dim' -> array of max bond dimensions
+                    'eigenvalues' -> eigenvalues when partitioning at chain center, if requested
         """
     from models import ComplexTensor
     import time
@@ -231,6 +235,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     fidelities = []
     # record max bond_dim
     max_bond_dim = []
+    #record eigenspectrum cutting across chain center
+    eigenvalues = []
     for ep in range(epochs):
         t0=time.time()
         s2_penalty = s2_schedule(ep)
@@ -251,6 +257,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
             for i in range(L-1):
                 for __ in range(nstep):
+                
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
                     # with respect to this 'blob'; updates merged tensor accordingly, then breaks back to local tensors
                    
@@ -258,6 +265,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                                     rotation=rotations, cutoff=cutoff, direction='right',
                                     max_sv_to_keep=max_sv,
                                     learning_rate=learning_rate, s2_penalty=s2_penalty,use_cache=use_cache)
+                
             #backward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('left', spinconfig, rotation=rotations)
@@ -275,6 +283,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 if ground_truth_mps is not None:
                     fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
                 max_bond_dim.append(mps_model.max_bond_dim)
+                
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
