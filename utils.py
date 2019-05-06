@@ -20,7 +20,7 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
         and k is the number of singular values retained.
         """
     try:
-        if(A.dtype == np.complex128):
+        if A.dtype in (np.complex128, np.complex64):
             u,s,v = zgesvd.svd_zgesvd(A, full_matrices=False, compute_uv=True)
         else:
             u,s,v = sp.linalg.svd(A, full_matrices=False)
