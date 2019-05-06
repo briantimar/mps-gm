@@ -413,16 +413,18 @@ class MPS(nn.Module):
                                 contractor)
         return m
 
-    def trace_rho_squared(self, site_index):
+    def trace_rho_squared(self, site_index, normalize=True):
         """ Compute the trace of the reduced partial density matrix squared, obtained
         by partitioning the system between sites (site_index, site_index + 1)
-        
+        if normalize: state is normalized before computing.
         Returns: real scalar."""
         if site_index < 0 or site_index >= self.L-1:
             raise ValueError("not a valid bond for partitioning the system")
         if self.gauge_index != site_index:
             warnings.warn("MPS should be gauged before computing reduced density ops")
             self.gauge_to(site_index)
+        if normalize:
+            self.normalize()
 
         A = self.get_local_tensor(site_index)
         contractor_inner = lambda a, astar: torch.einsum('sij,sik->jk', a, astar)
@@ -430,10 +432,10 @@ class MPS(nn.Module):
         Ainner = A.apply_mul(A.conj(), contractor_inner)
         return Ainner.apply_mul(Ainner.conj(), contractor_spatial).numpy().real
 
-    def renyi2_entropy(self, site_index):
+    def renyi2_entropy(self, site_index, normalize=True):
         """ Compute the Renyi-2 entropy for the density matrix defined on the subsystem
             [0, ... site_index] (inclusive)"""
-        return -np.log(self.trace_rho_squared(site_index))
+        return -np.log(self.trace_rho_squared(site_index, normalize=normalize))
         
 
     def amplitude(self, spin_config, rotation=None):
@@ -565,16 +567,20 @@ class MPS(nn.Module):
             raise ValueError("direction not set")
 
     def get_eigenvalues(self, bond_index, reset_gauge=True, 
-                            cutoff=1e-20, max_sv_to_keep=None):
+                            cutoff=1e-20, max_sv_to_keep=None, 
+                            normalize = True):
         """ Return the eigenvalues of the density operator defined by restricting the MPS to the interval
         [1, site_index].
             reset_gauge: if True, the gauge of the MPS will be reset to its value previous to the eigenvalue computation.
+            normalize: if True, state is normalized before computing.
             Returns: numpy array
             """
         if bond_index < 0 or bond_index >= self.L-1:
             raise ValueError("not a valid bond index: %d" % bond_index)
         prev_gauge_index = self.gauge_index
         self.gauge_to(bond_index)
+        if normalize: 
+            self.normalize()
         
         A = self.merge(bond_index).numpy()
         if reset_gauge and prev_gauge_index is not None:
@@ -719,14 +725,14 @@ class MPS(nn.Module):
         
         """
         partial_s2_unnorm = self._partial_deriv_twosite_renyi2_entropy_unnormalized(site_index)
-        return partial_s2_unnorm + 2 * self.partial_deriv_twosite_norm(site_index)
+        return partial_s2_unnorm + self.partial_deriv_twosite_norm(site_index).div(self.norm()) * 2
 
     def grad_twosite_renyi2_entropy(self, site_index):
         """ Compute the gradient of the renyi-2 entropy defined by paritioning at (site_index, 
         site_index +1) WRT the blob matrix there.
         Returns: (local_dim, local_dim, bond_dim, bond_dim) complex numpy array holding gradients
         of renyi-2 WRT real and imag parts of the blob."""
-        return 2 * self._partial_deriv_twosite_renyi2_entropy_unnormalized(site_index).numpy().conj()
+        return 2 * self.partial_deriv_twosite_renyi2_entropy(site_index).numpy().conj()
 
     def set_sites_from_twosite(self, site_index, twosite,
                                     cutoff=1e-16, max_sv_to_keep=None, 
