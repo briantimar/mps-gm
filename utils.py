@@ -326,13 +326,36 @@ def draw_random(mps, N):
     pauli_eig_outcomes = 1 - 2 * index_outcomes
     return angles, pauli_eig_outcomes
 
+def train_from_dataset(meas_ds,
+                learning_rate, batch_size, epochs,
+                 s2_penalty=None, cutoff=1e-10,
+                 max_sv_to_keep = None,
+                ground_truth_mps=None, use_cache=True, seed=None, 
+                record_eigs=False, record_s2=False, verbose=False):
+    """ Given a MeasurementDataset ds, create and train an MPS on it."""
+    if seed is not None:
+        torch.manual_seed(seed)
+    L = meas_ds[0]['samples'].size(0)
+    N = len(meas_ds)
+    if verbose:
+        print("Training on system size %d with %d samples"%(L, N))
+    dl = DataLoader(meas_ds, batch_size=batch_size, shuffle=True)
+    #train a model
+    model = MPS(L, local_dim=2, bond_dim=2)
+    logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
+                                    s2_penalty=s2_penalty,cutoff=cutoff,
+                                    max_sv_to_keep=max_sv_to_keep,
+                                    use_cache=use_cache,
+                                    ground_truth_mps=ground_truth_mps, 
+                                    record_eigs=record_eigs, record_s2=record_s2,verbose=verbose)
+    return model, logdict
 
 def do_training(angles, pauli_outcomes, 
                 learning_rate, batch_size, epochs,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, use_cache=True, seed=None, 
-                record_eigs=False, record_s2=False):
+                record_eigs=False, record_s2=False, verbose=False):
     """ Train MPS on given angles and outcomes.
         angles: (N, L, 2) numpy array of theta, phi angles
         pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
@@ -356,16 +379,17 @@ def do_training(angles, pauli_outcomes,
     #generate local unitaries from angles
     rotations = pauli_exp(angles[..., 0], angles[..., 1])
     ds = MeasurementDataset(spin_config_outcomes, rotations)
-    dl = DataLoader(ds, batch_size=batch_size, shuffle=True)
-    #train a model
-    model = MPS(L, local_dim=2, bond_dim=2)
-    logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
-                                    s2_penalty=s2_penalty,cutoff=cutoff,
-                                    max_sv_to_keep=max_sv_to_keep,
-                                    use_cache=use_cache,
-                                    ground_truth_mps=ground_truth_mps, 
-                                    record_eigs=record_eigs, record_s2=record_s2)
-    return model, logdict
+    return train_from_dataset(ds, learning_rate,batch_size, epochs, 
+                                s2_penalty=s2_penalty, cutoff=cutoff, 
+                                max_sv_to_keep=max_sv_to_keep, ground_truth_mps=ground_truth_mps, 
+                                use_cache=use_cache, seed=seed,record_eigs=record_eigs, 
+                                record_s2=record_s2, verbose=verbose)
+
+def evaluate(angles, pauli_outcomes, epochs, 
+                learning_rates, s2_penalties, cutoff=1e-10,
+                max_sv_to_keep=None, use_cache=True, seed=None, 
+                record_eigs=False, record_s2=False):
+    """ Compute the NLL on the given validation 
 
 
 class MeasurementDataset(TensorDataset):
