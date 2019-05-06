@@ -445,6 +445,63 @@ def evaluate(train_ds, val_ds,
   
     return model, logdict
 
+def do_validation(train_ds, val_ds, 
+                 batch_size, epochs,
+                 params, 
+                 cutoff=1e-10,
+                 max_sv_to_keep = None,
+                 use_cache=True, seed=None, 
+                 early_stopping=True,
+                 verbose=False):
+    """ Validate a set of parameters on held-out dataset.   
+        params: list of dicts holding hyperparams. Each must have keys:
+            'learning_rate'
+            's2_penalty'
+        seed: if not None, int, or list of ints. In the latter case, scores will be averaged over seeds.
+        Returns: params which obtained best NLL score on held-out data"""
+    Nparam = len(params)
+    
+    best_score = None
+    best_index = None
+    try:
+        nseed = len(seed)
+        seeds = seed
+    except TypeError:
+        nseed = 1
+        seeds = [seed]
+    if verbose:
+        print("Training on %d different param sets, with %d seeds each" % (Nparam, nseed))
+    for i in range(Nparam):
+        learning_rate = params[i]['learning_rate']
+        s2_penalty = params[i]['s2_penalty']
+        _scores = []
+        if verbose:
+                print("Training with lr = {0}, s2 penalty = {1}".format(learning_rate, s2_penalty))
+        for j in range(nseed):
+            
+            seed = seeds[j]
+            try:
+                __, logdict = evaluate(train_ds, val_ds, learning_rate, batch_size, epochs, 
+                                        s2_penalty=s2_penalty, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep, 
+                                        use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=verbose)
+                newscore = logdict['val_loss'][-1]
+            except:
+                print("Training failed")
+                newscore = np.inf
+            
+            _scores.append(newscore)
+        score = np.mean(_scores)
+        if verbose:
+            print("Acheived val score: {0}".format(score))
+        if best_score is None or score < best_score:
+            best_score = score
+            best_index = i
+    return params[best_index]
+
+            
+    
+    
+
 
 def make_linear_schedule(start, finish, epochs):
     def f(ep):
