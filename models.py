@@ -865,6 +865,16 @@ class MPS(nn.Module):
         shapes = [tuple(t.shape[1:]) for t in self.tensors]
         return shapes
 
+    @property
+    def max_bond_dim(self):
+        """ Returns the max bond dimension of the MPS"""
+        D = 0
+        for s in self.shape:
+            if s[0] > D:
+                D = s[0]
+        return D
+
+
     def save(self, fname):
         """ Save mps tensors to filename"""
         torch.save(self.tensors, fname)
