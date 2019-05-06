@@ -8,6 +8,13 @@ from tools import generate_binary_space
 
 class TestUtils(TestCase):
 
+    def test_svd(self):
+        A = np.random.normal(size=(10,10)) + 1j * np.random.normal(size=(10,10))
+        u, s, v = svd(A, cutoff=1e-12)
+        reconstructed_A = np.dot(np.dot(u, np.diag(s)), v)
+        self.assertAlmostEqual( np.sum(np.abs(A - reconstructed_A)), 0)
+
+
     def test_push_right_normalization(self):
         al = np.random.normal(size=(2,4,5)) + 1j*np.random.normal(size=(2,4,5))
         ar = np.random.normal(size=(2,5,6))
