@@ -197,7 +197,9 @@ def build_random_mps(L, bond_dim):
     return MPS(L,local_dim=2,bond_dim=bond_dim)
 
 def do_local_sgd_training(mps_model, dataloader, epochs, 
-                            learning_rate, s2_penalty=None,nstep=1,
+                            learning_rate, 
+                            val_ds = None, 
+                            s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
                             ground_truth_mps = None, verbose=False, use_cache=True, 
                             record_eigs=True, record_s2=True):
@@ -207,6 +209,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         dataloader: pytorch dataloader which yields dictionaries holding batches of spin configurations
         and local unitaires.
         epochs: int, number of epochs to train
+        val_ds: if not None, validation dataset on which NLL will be computed after each epoch.
         learning_rate : lr for gradient descent. Scalar, or function of epoch which returns scalar.
         s2_penalty: coefficient of S2 regularization term. if not None, scalar or function of epoch which returns scalar
         nstep: how many gradient descent updates to make at each bond.
@@ -242,6 +245,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     eigenvalues = []
     #Renyi-2 entropy cutting across chain center
     s2 = []
+    #losses on validation set
+    val_loss = []
 
     for ep in range(epochs):
         t0=time.time()
@@ -302,6 +307,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             if ground_truth_mps is not None:
                 fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
             max_bond_dim.append(mps_model.max_bond_dim)
+            if val_ds is not None:
+                val_loss.append(compute_NLL(val_ds, mps_model))
+
             
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
@@ -310,7 +318,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 fidelity=np.asarray(fidelities),
                 max_bond_dim=max_bond_dim, 
                 eigenvalues=eigenvalues,
-                s2=s2)
+                s2=s2, 
+                val_loss=val_loss)
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
@@ -328,11 +337,15 @@ def draw_random(mps, N):
 
 def train_from_dataset(meas_ds,
                 learning_rate, batch_size, epochs,
+                val_ds=None,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False):
-    """ Given a MeasurementDataset ds, create and train an MPS on it."""
+    """ Given a MeasurementDataset ds, create and train an MPS on it.
+        val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
+    from torch.utils.data import DataLoader
+    from models import MPS
     if seed is not None:
         torch.manual_seed(seed)
     L = meas_ds[0]['samples'].size(0)
@@ -343,6 +356,7 @@ def train_from_dataset(meas_ds,
     #train a model
     model = MPS(L, local_dim=2, bond_dim=2)
     logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
+                                    val_ds=val_ds,
                                     s2_penalty=s2_penalty,cutoff=cutoff,
                                     max_sv_to_keep=max_sv_to_keep,
                                     use_cache=use_cache,
@@ -361,8 +375,8 @@ def do_training(angles, pauli_outcomes,
         pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
         returns: trained mps and logdict holding loss and fidelity from training."""
 
-    from torch.utils.data import DataLoader
-    from models import MPS
+   
+   
     from qtools import pauli_exp
     if seed is not None:
         torch.manual_seed(seed)
@@ -394,7 +408,7 @@ def compute_NLL(meas_ds,
     Ui = meas_ds[:]['rotations']['imag']
     Ur = meas_ds[:]['rotations']['real']
     U = ComplexTensor(Ur, Ui)
-    return model.nll_loss(spins_all, rotation=U)
+    return model.nll_loss(spins_all, rotation=U).item()
 
 
 def evaluate(train_ds, val_ds, 
@@ -403,17 +417,18 @@ def evaluate(train_ds, val_ds,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
                  verbose=False):
-    """ Train a model on the given training MeasurementDataset, then compute its NLL cost function on 
+    """ Train a model on the given training MeasurementDataset, computing its NLL cost function on 
     the held-out validation set.
-    Returns: trained model, validation loss."""
-    model, __ =  train_from_dataset(train_ds,
+    Returns: trained model, training logdict"""
+    model, logdict  =  train_from_dataset(train_ds,
                         learning_rate, batch_size, epochs,
+                        val_ds=val_ds,
                         s2_penalty=s2_penalty, cutoff=cutoff,
                         max_sv_to_keep=max_sv_to_keep,
                         ground_truth_mps=None, use_cache=use_cache, seed=seed, 
                         record_eigs=False, record_s2=False, verbose=verbose)
-    val_loss = compute_NLL(val_ds, model)
-    return model, val_loss
+  
+    return model, logdict
 
 
 class MeasurementDataset(TensorDataset):
