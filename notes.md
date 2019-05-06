@@ -90,3 +90,14 @@ This suggests that the **sampling process is in error somehow**. Dataset used fo
 Ah. Just found a bug in the qtools code that produces unitaries from angles -- I think one of the phi signs is wrong. will test in new branch.
 
 Fixed, that seems to have done the trick! Can now train on 2-qubit ghz without hassle.
+
+## May 6th
+Some important recent updates:
+* Added cached amplitudes in training (not much improvement)
+* Added eigenvalue computation for reduced density ops
+* Fixed bugs in NLL and S2 penalty gradient (both were missing normalization terms...)
+* Qualitative understanding of the 'bond dimension inflation' I'd observed in training on GHZ states
+
+Regarding the latter -- it seems the fundamental cause of large bond dims was a **large learning rate** during training. The reason is simple: the eigenvalue truncation happens just after the site tensor is updated according to the gradient. If the lr is large, this update produces a new twosite blob which seems generically to create entanglement. 
+
+During gradient-descent training without S2 regularization, one often finds that entropy of the half-chain state peaks at a large spurious value before starting to fall down. 
