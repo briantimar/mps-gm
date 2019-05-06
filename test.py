@@ -252,7 +252,7 @@ class TestMPS(TestCase):
         psi.gauge_to(site_index)
         p1 = psi.trace_rho_squared(site_index)
         p2 = np.sum( psi.get_eigenvalues(site_index)**2)
-        self.assertAlmostEqual(np.sum(np.abs(p1 - p2)), 0)
+        self.assertAlmostEqual(np.sum(np.abs(p1 - p2)), 0,places=6)
 
 
 if __name__=='__main__':
