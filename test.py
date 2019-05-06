@@ -183,8 +183,6 @@ class TestMPS(TestCase):
             psi.gauge_to(i)
 
 
-        
-
     def test_amplitudes(self):
         from qtools import pauli_exp
         L = 2
@@ -246,6 +244,15 @@ class TestMPS(TestCase):
         eigs = psi.get_eigenvalues(1)
         target = np.asarray([.5, .5])
         self.assertAlmostEqual(np.sum(np.abs(eigs-target)), 0, places=6)
+
+    def test_purity(self):
+        L = 8
+        psi = build_random_mps(L, 10)
+        site_index = 3
+        psi.gauge_to(site_index)
+        p1 = psi.trace_rho_squared(site_index)
+        p2 = np.sum( psi.get_eigenvalues(site_index)**2)
+        self.assertAlmostEqual(np.sum(np.abs(p1 - p2)), 0)
 
 
 if __name__=='__main__':
