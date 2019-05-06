@@ -256,6 +256,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
             for i in range(L-1):
+                if record_eigs and i == L//2 - 1:
+                    eigs = mps_model.get_eigenvalues(i)
+                    eigenvalues.append(eigs)
                 for __ in range(nstep):
                 
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
@@ -289,7 +292,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             print("Model shape: ", mps_model.shape)
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities),
-                max_bond_dim=max_bond_dim)
+                max_bond_dim=max_bond_dim, 
+                eigenvalues=eigenvalues)
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
