@@ -6,6 +6,7 @@ import warnings
 from utils import make_onehot
 #tools for SVD -- normalization and breaking two-site tensors
 from utils import svd_push_left, svd_push_right, split_two_site
+from utils import get_singular_vals
 
 
 class ComplexTensor:
@@ -563,7 +564,22 @@ class MPS(nn.Module):
         else:
             raise ValueError("direction not set")
 
-
+    def get_eigenvalues(self, bond_index, reset_gauge=True, 
+                            cutoff=1e-20, max_sv_to_keep=None):
+        """ Return the eigenvalues of the density operator defined by restricting the MPS to the interval
+        [1, site_index].
+            reset_gauge: if True, the gauge of the MPS will be reset to its value previous to the eigenvalue computation.
+            Returns: numpy array
+            """
+        if bond_index < 0 or bond_index >= self.L-1:
+            raise ValueError("not a valid bond index: %d" % bond_index)
+        prev_gauge_index = self.gauge_index
+        self.gauge_to(bond_index)
+        
+        A = self.merge(bond_index).numpy()
+        if reset_gauge and prev_gauge_index is not None:
+            self.gauge_to(prev_gauge_index)
+        return get_singular_vals(A, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep)
 
     ### methods for computing various gradients
     def partial_deriv_twosite_psi(self, site_index, spin_config, 

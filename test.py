@@ -240,6 +240,12 @@ class TestMPS(TestCase):
                                     - 1.0/np.sqrt(2))),
                                 0,places=6)
     
+    def test_get_eigenvalues(self):
+        L = 4
+        psi = build_ghz_plus(L)
+        eigs = psi.get_eigenvalues(1)
+        target = np.asarray([.5, .5])
+        self.assertAlmostEqual(np.sum(np.abs(eigs-target)), 0, places=6)
 
 
 if __name__=='__main__':

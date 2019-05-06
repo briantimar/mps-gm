@@ -113,7 +113,22 @@ def split_two_site(A, normalize='left', cutoff=1e-8, max_sv_to_keep=None):
     
     return Aleft, Aright
 
-    
+def get_singular_vals(twosite_tensor, cutoff=1e-16, max_sv_to_keep=None):
+    """ Extract singular values from a twosite tensor
+        twosite_tensor: complex numpy array shape (local dim, localdim, bond dim1, bond dim2)
+        returns: numpy array of singular values.
+        
+        cutoff: singular values below this cutoff will be discarded.
+        max_sv_to_keep: if not None, the max number of SV's to keep.
+        """
+    _, local_dim, D1, D2 = twosite_tensor.shape
+    if twosite_tensor.shape[0] != local_dim:
+        raise ValueError("invalid shape {0} for two-site tensor".format(twosite_tensor.shape))
+    A = np.swapaxes(twosite_tensor, 1,2)
+    A = np.reshape(A, (local_dim * D1, local_dim * D2))
+    __, singular_vals, __, = svd(A, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep)
+    return singular_vals**2
+
 def make_onehot(int_tensor, n):
     """Return one-hot encoding of specified tensor.
         n = max integer value. Assumed that int_tensor only takes values in 0...n-1
