@@ -202,7 +202,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
                             ground_truth_mps = None, verbose=False, use_cache=True, 
-                            record_eigs=True, record_s2=True):
+                            record_eigs=True, record_s2=True, early_stopping=True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -221,6 +221,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         use_cache: whether to cache partial amplitudes during the sweeps.
         record_eigs: whether to record eigenvalues of the half-chain density op.
         record_s2: whether to record the Renyi-2 entropy of the half-chain density op.
+        early_stopping: if True, halt training when val loss fails to decrease by more than 1e-3 in 5 epochs.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -247,6 +248,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     s2 = []
     #losses on validation set
     val_loss = []
+
+    #how many epochs must val score fail to improve before we stop?
+    NUM_EP_EARLY_STOP=5
+    #val score must decrease by at least this fraction to count as improvement.
+    REL_VAL_EARLY_STOP=1e-3
 
     for ep in range(epochs):
         t0=time.time()
@@ -301,6 +307,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                                     rotation=rotations, cutoff=cutoff, direction='left',
                                      max_sv_to_keep=max_sv,
                                     learning_rate=lr, s2_penalty=_s2_penalty, use_cache=use_cache)
+
+        if verbose:
+            print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
+            print("Model shape: ", mps_model.shape)
         with torch.no_grad():
             #record batched loss functions
             losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
@@ -309,11 +319,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             max_bond_dim.append(mps_model.max_bond_dim)
             if val_ds is not None:
                 val_loss.append(compute_NLL(val_ds, mps_model))
-
-            
-        if verbose:
-            print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
-            print("Model shape: ", mps_model.shape)
+                if early_stopping and ep>NUM_EP_EARLY_STOP:
+                    rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-5:]
+                    if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
+                        if verbose:
+                            print("Val score not decreasing, halting training")
+                        break
+        
     return dict(loss=np.asarray(losses),
                 fidelity=np.asarray(fidelities),
                 max_bond_dim=max_bond_dim, 
@@ -341,7 +353,7 @@ def train_from_dataset(meas_ds,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, use_cache=True, seed=None, 
-                record_eigs=False, record_s2=False, verbose=False):
+                record_eigs=False, record_s2=False, verbose=False, early_stopping=True):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -361,7 +373,8 @@ def train_from_dataset(meas_ds,
                                     max_sv_to_keep=max_sv_to_keep,
                                     use_cache=use_cache,
                                     ground_truth_mps=ground_truth_mps, 
-                                    record_eigs=record_eigs, record_s2=record_s2,verbose=verbose)
+                                    record_eigs=record_eigs, record_s2=record_s2,
+                                    early_stopping=early_stopping,verbose=verbose)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -416,6 +429,7 @@ def evaluate(train_ds, val_ds,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
+                 early_stopping=True,
                  verbose=False):
     """ Train a model on the given training MeasurementDataset, computing its NLL cost function on 
     the held-out validation set.
@@ -426,7 +440,8 @@ def evaluate(train_ds, val_ds,
                         s2_penalty=s2_penalty, cutoff=cutoff,
                         max_sv_to_keep=max_sv_to_keep,
                         ground_truth_mps=None, use_cache=use_cache, seed=seed, 
-                        record_eigs=False, record_s2=False, verbose=verbose)
+                        record_eigs=False, record_s2=False, 
+                        early_stopping=early_stopping, verbose=verbose)
   
     return model, logdict
 
