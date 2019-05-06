@@ -446,6 +446,16 @@ def evaluate(train_ds, val_ds,
     return model, logdict
 
 
+def make_linear_schedule(start, finish, epochs):
+    def f(ep):
+        return start + ep * (finish - start) / (epochs-1)
+    return f
+
+def make_exp_schedule(start, timescale):
+    def f(ep):
+        return start * np.exp(- ep / timescale)
+    return f
+
 class MeasurementDataset(TensorDataset):
     """ Holds local unitaries (key: rotations) and corresponding outcomes (key: samples)"""
     def __init__(self, samples, rotations):
