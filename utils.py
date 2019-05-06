@@ -458,11 +458,10 @@ def do_validation(train_ds, val_ds,
             'learning_rate'
             's2_penalty'
         seed: if not None, int, or list of ints. In the latter case, scores will be averaged over seeds.
-        Returns: params which obtained best NLL score on held-out data"""
+        Returns: list of validation scores"""
     Nparam = len(params)
-    
-    best_score = None
-    best_index = None
+    scores = np.empty(Nparam)
+
     try:
         nseed = len(seed)
         seeds = seed
@@ -493,10 +492,8 @@ def do_validation(train_ds, val_ds,
         score = np.mean(_scores)
         if verbose:
             print("Acheived val score: {0}".format(score))
-        if best_score is None or score < best_score:
-            best_score = score
-            best_index = i
-    return params[best_index]
+        scores[i] = score
+    return scores
 
             
     
