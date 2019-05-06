@@ -331,7 +331,8 @@ def do_training(angles, pauli_outcomes,
                 learning_rate, batch_size, epochs,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
-                ground_truth_mps=None, use_cache=True, seed=None):
+                ground_truth_mps=None, use_cache=True, seed=None, 
+                record_eigs=False, record_s2=False):
     """ Train MPS on given angles and outcomes.
         angles: (N, L, 2) numpy array of theta, phi angles
         pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
@@ -362,7 +363,8 @@ def do_training(angles, pauli_outcomes,
                                     s2_penalty=s2_penalty,cutoff=cutoff,
                                     max_sv_to_keep=max_sv_to_keep,
                                     use_cache=use_cache,
-                                    ground_truth_mps=ground_truth_mps)
+                                    ground_truth_mps=ground_truth_mps, 
+                                    record_eigs=record_eigs, record_s2=record_s2)
     return model, logdict
 
 
