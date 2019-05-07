@@ -449,28 +449,6 @@ def compute_NLL(meas_ds,
     return model.nll_loss(spins_all, rotation=U).item()
 
 
-def evaluate(train_ds, val_ds, 
-                learning_rate, batch_size, epochs,
-                 s2_penalty=None, cutoff=1e-10,
-                 max_sv_to_keep = None,
-                 use_cache=True, seed=None, 
-                 early_stopping=True,
-                 verbose=False, compute_overlaps=False):
-    """ Train a model on the given training MeasurementDataset, computing its NLL cost function on 
-    the held-out validation set.
-    Returns: trained model, training logdict"""
-    model, logdict  =  train_from_dataset(train_ds,
-                        learning_rate, batch_size, epochs,
-                        val_ds=val_ds,
-                        s2_penalty=s2_penalty, cutoff=cutoff,
-                        max_sv_to_keep=max_sv_to_keep,
-                        ground_truth_mps=None, use_cache=use_cache, seed=seed, 
-                        record_eigs=False, record_s2=False, 
-                        early_stopping=early_stopping, verbose=verbose, 
-                        compute_overlaps=compute_overlaps)
-  
-    return model, logdict
-
 def do_validation(train_ds, val_ds, 
                  batch_size, epochs,
                  params, 
@@ -506,7 +484,8 @@ def do_validation(train_ds, val_ds,
             
             seed = seeds[j]
             try:
-                __, logdict = evaluate(train_ds, val_ds, learning_rate, batch_size, epochs, 
+                __, logdict = train_from_dataset(train_ds,learning_rate, batch_size, epochs, 
+                                        val_ds = val_ds,
                                         s2_penalty=s2_penalty, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep, 
                                         use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=verbose,
                                         compute_overlaps=False)
@@ -636,6 +615,6 @@ class MeasurementDataset(TensorDataset):
         """ Returns samples, rotations tensors holding data corresponding to the given slice."""
         if stop_index is None:
             stop_index = len(self)
-        spinconfig = self.samples[start_index:stop_index, ...]
-        U = self.rotations[start_index:stop_index, ...]
+        spinconfig = self.samples[start_index:stop_index, ...][0]
+        U = self.rotations[start_index:stop_index, ...][0]
         return spinconfig, U
