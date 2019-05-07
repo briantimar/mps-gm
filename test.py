@@ -254,6 +254,12 @@ class TestMPS(TestCase):
         p2 = np.sum( psi.get_eigenvalues(site_index)**2)
         self.assertAlmostEqual(np.sum(np.abs(p1 - p2)), 0,places=6)
 
+    def test_wavefunction(self):
+        L = 2
+        psi = build_ghz_plus(L)
+        wf = psi.wavefunction()
+        target = (1/np.sqrt(2)) * np.asarray([0, 1, 1, 0])
+        self.assertAlmostEqual(np.sum(np.abs(wf - target)), 0,places=6)
 
 if __name__=='__main__':
     unittest.main()

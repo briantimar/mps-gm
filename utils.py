@@ -583,7 +583,6 @@ def estimate_overlap(mps, spin_config, rotations, eps=1e-2, Nsample=10):
     overlap_err = max(stat_err_by_size[-1], np.abs(overlap_est - mean_by_size[-2]))
     return overlap_est, overlap_err, convergence_acheived
 
-
 def make_linear_schedule(start, finish, epochs):
     def f(ep):
         return start + ep * (finish - start) / (epochs-1)

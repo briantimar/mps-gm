@@ -893,7 +893,7 @@ class MPS(nn.Module):
                 samples[:, site_index] = cond_samples
             return samples
         
-
+    ### Miscellaneous methods
 
     @property
     def shape(self):
@@ -909,6 +909,13 @@ class MPS(nn.Module):
             if s[0] > D:
                 D = s[0]
         return D
+    
+    def wavefunction(self):
+        """ Return the mps wavefunction as numpy array in the standard basis."""
+        from tools import generate_binary_space
+        basis = generate_binary_space(self.L)
+        amplitudes = self.amplitude_normalized(torch.tensor(basis, dtype=torch.long))
+        return amplitudes.numpy()
 
 
     def save(self, fname):
