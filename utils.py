@@ -471,8 +471,10 @@ def do_validation(train_ds, val_ds,
             'learning_rate'
             's2_penalty'
         seed: if not None, int, or list of ints. In the latter case, scores will be averaged over seeds.
-        Returns: list of validation scores"""
+        Returns: val scores (Nparam),  training losses , val losses. """
     Nparam = len(params)
+    trlosses = []
+    vallosses = []
     scores = np.empty(Nparam)
 
     try:
@@ -489,26 +491,37 @@ def do_validation(train_ds, val_ds,
         _scores = []
         if verbose:
                 print("Training with lr = {0}, s2 penalty = {1}".format(learning_rate, s2_penalty))
+        _trlosses = []
+        _vallosses = []
         for j in range(nseed):
             
             seed = seeds[j]
+
+            _trloss = np.inf * np.ones(epochs)
+            _valloss = np.inf * np.ones(epochs)
             try:
                 __, logdict = train_from_dataset(train_ds,learning_rate, batch_size, epochs, 
                                         val_ds = val_ds,
                                         s2_penalty=s2_penalty, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep, 
-                                        use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=verbose,
+                                        use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=False,
                                         compute_overlaps=False)
-                newscore = logdict['val_loss'][-1]
+                _trloss = logdict['loss']
+                _valloss = logdict['val_loss']
+                _score = _valloss[-1]
+                
             except:
                 print("Training failed")
-                newscore = np.inf
-            
-            _scores.append(newscore)
+                _score = np.inf
+            _scores.append(_score)
         score = np.mean(_scores)
         if verbose:
             print("Acheived val score: {0}".format(score))
+        
+        trlosses.append(_trloss)
+        vallosses.append(_valloss)
         scores[i] = score
-    return scores
+        
+    return scores, trlosses, vallosses
 
 def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                  Nparam=20, 
@@ -516,13 +529,13 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
                  early_stopping=True,
-                 verbose=False,
+                 verbose=False
                  ):
     """ Obtain hyperparams by validation.
         hyperparams validated are lr and s2_penalty. """
     
     s2_scale = 10**np.random.uniform(-4, 0, Nparam)
-    s2_timescale = np.random.uniform(.2, 1) * epochs
+    s2_timescale = np.random.uniform(.2, 1,Nparam) * epochs
     lr_scale = 10**np.random.uniform(-6, 0, Nparam)
     lr_timescale = np.random.uniform(.5, 10, Nparam)
 
@@ -530,7 +543,7 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
     s2 = [make_exp_schedule(A, tau) for (A, tau) in zip(s2_scale, s2_timescale)]
     params = [dict(learning_rate=lr[i],s2_penalty=s2[i]) for i in range(Nparam)]
 
-    val_scores = do_validation(train_ds, val_ds, 
+    scores, trlosses, vallosses = do_validation(train_ds, val_ds, 
                             batch_size, epochs,
                             params, 
                             cutoff=cutoff,
@@ -538,10 +551,50 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                             use_cache=use_cache, seed=seed, 
                             early_stopping=early_stopping,
                             verbose=verbose)
-    best_index = np.argmax(val_scores)
-    return params[best_index]
+    best_index = np.argmin(scores)
+    best_params = dict(lr_scale=lr_scale[best_index],
+                        lr_timescale=lr_timescale[best_index],
+                        s2_scale=s2_scale[best_index],
+                        s2_timescale=s2_timescale[best_index])
 
+    return best_params, trlosses[best_index], vallosses[best_index]
 
+def select_hyperparams_and_train(ds,
+                             batch_size, epochs,
+                            val_split=.1,Nparam=20,
+                            cutoff=1e-10,
+                            max_sv_to_keep = None,
+                            ground_truth_mps=None, ground_truth_qutip=None, use_cache=True,val_seeds=None, seed=None, 
+                            record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
+                           compute_overlaps=True):
+    """ Select hyperparams using single validation split, then train on full dataset.
+        Returns: trained model, logdict, best params, trloss from val, valloss from val"""
+    N = len(ds)
+    Nval = int(val_split * N)
+    from torch.utils.data import random_split
+    train_ds, val_ds = random_split(ds,[N-Nval,Nval])
+
+    params, trloss, valloss = select_hyperparams(train_ds, val_ds, batch_size, epochs,
+                                                Nparam=Nparam, 
+                                                cutoff=cutoff,
+                                                max_sv_to_keep=max_sv_to_keep,
+                                                use_cache=use_cache, seed=val_seeds, 
+                                                early_stopping=early_stopping,
+                                                verbose=verbose
+                                                )
+    #if early stopping has been used, may find that we want to train for fewer epochs, 
+    # as indicated by where training stopped in best validation run.
+    epochs = len(trloss)
+
+    lr = make_exp_schedule(params['lr_scale'], params['lr_timescale'])
+    s2_penalty = make_exp_schedule(params['s2_scale'], params['s2_timescale'])
+    #train on full dataset
+    model, logdict = train_from_dataset(ds,lr, batch_size,epochs,s2_penalty=s2_penalty,
+                                        cutoff=cutoff,max_sv_to_keep=max_sv_to_keep,
+                                        ground_truth_mps=ground_truth_mps,ground_truth_qutip=ground_truth_qutip,
+                                        use_cache=use_cache,seed=seed,record_eigs=record_eigs,
+                                        record_s2=record_s2,verbose=verbose,compute_overlaps=compute_overlaps)
+    return model, logdict, params, trloss, valloss
 
 def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
