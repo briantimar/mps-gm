@@ -203,7 +203,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
                             ground_truth_mps = None, verbose=False, use_cache=True, 
-                            record_eigs=True, record_s2=True, early_stopping=True):
+                            record_eigs=True, record_s2=True, early_stopping=True, 
+                            compute_overlaps=True, spinconfig_all=None, rotations_all=None):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -223,6 +224,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         record_eigs: whether to record eigenvalues of the half-chain density op.
         record_s2: whether to record the Renyi-2 entropy of the half-chain density op.
         early_stopping: if True, halt training when val loss fails to decrease by more than 1e-3 in 5 epochs.
+        compute_overlaps: whether to compute overlap estimates onto the target state.
+            if true: spinconfig_all, rotations_all are used to compute the overlap estimates.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -235,6 +238,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     import time
     if s2_penalty is None:
         s2_penalty = np.zeros(len(dataloader) * epochs)
+    if compute_overlaps and ( spinconfig_all is None or rotations_all is None):
+        raise ValueError(""" Provide spinconfig and rotation datasets to enable overlap estimation """)
     #system size
     L = mps_model.L
     #logging the loss function
@@ -249,6 +254,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     s2 = []
     #losses on validation set
     val_loss = []
+    #overlap estimates on the source state
+    overlap = []
+    overlap_err = []
+    overlap_converged = []
 
     #how many epochs must val score fail to improve before we stop?
     NUM_EP_EARLY_STOP=5
@@ -318,6 +327,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             if ground_truth_mps is not None:
                 fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
             max_bond_dim.append(mps_model.max_bond_dim)
+            if compute_overlaps:
+                mu, sig, convergence_acheived = estimate_overlap(mps_model, spinconfig_all, rotations_all, eps=1e-2, Nsample=10)
+                overlap.append(mu)
+                overlap_err.append(sig)
+                overlap_converged.append(convergence_acheived)
+
             if val_ds is not None:
                 val_loss.append(compute_NLL(val_ds, mps_model))
                 if early_stopping and ep>NUM_EP_EARLY_STOP:
@@ -331,8 +346,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 fidelity=np.asarray(fidelities),
                 max_bond_dim=max_bond_dim, 
                 eigenvalues=eigenvalues,
-                s2=s2, 
-                val_loss=val_loss)
+                s2=np.asarray(s2), 
+                val_loss=np.asarray(val_loss), 
+                overlap=dict(mean=np.asarray(overlap), 
+                            err=np.asarray(overlap_err), 
+                            converged=np.asarray(overlap_converged)))
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
@@ -354,7 +372,8 @@ def train_from_dataset(meas_ds,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, use_cache=True, seed=None, 
-                record_eigs=False, record_s2=False, verbose=False, early_stopping=True):
+                record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
+                compute_overlaps=True):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -365,6 +384,10 @@ def train_from_dataset(meas_ds,
     N = len(meas_ds)
     if verbose:
         print("Training on system size %d with %d samples"%(L, N))
+    if compute_overlaps:
+        #overlaps computed on full dataset
+        spinconfig_all = meas_ds[:]['samples']
+        Ur
     dl = DataLoader(meas_ds, batch_size=batch_size, shuffle=True)
     #train a model
     model = MPS(L, local_dim=2, bond_dim=2)
@@ -375,7 +398,8 @@ def train_from_dataset(meas_ds,
                                     use_cache=use_cache,
                                     ground_truth_mps=ground_truth_mps, 
                                     record_eigs=record_eigs, record_s2=record_s2,
-                                    early_stopping=early_stopping,verbose=verbose)
+                                    early_stopping=early_stopping,verbose=verbose,
+                                    estimate_overlap=estimate_overlap, spinconfig_all=spinconfig_all, rotations_all=rotations_all)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -605,3 +629,11 @@ class MeasurementDataset(TensorDataset):
         samples = self.samples[i][0]
         rot = self.rotations[i][0]
         return dict(samples=samples, rotations=dict(real=rot.real, imag=rot.imag))
+
+    def unpack(self, start_index=0, stop_index=None):
+        """ Returns samples, rotations tensors holding data corresponding to the given slice."""
+        if stop_index is None:
+            stop_index = len(self)
+        spinconfig = self.samples[start_index:stop_index, ...]
+        U = self.rotations[start_index:stop_index, ...]
+        return spinconfig, U
