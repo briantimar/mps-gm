@@ -917,6 +917,10 @@ class MPS(nn.Module):
         amplitudes = self.amplitude_normalized(torch.tensor(basis, dtype=torch.long))
         return amplitudes.numpy()
 
+    def to_qutip_ket(self):
+        """ Returns qutip ket representing the MPS"""
+        from qutip_utils import to_qutip_ket as _to_qutip_ket
+        return _to_qutip_ket(self.wavefunction(), self.L)
 
     def save(self, fname):
         """ Save mps tensors to filename"""

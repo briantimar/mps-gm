@@ -261,5 +261,14 @@ class TestMPS(TestCase):
         target = (1/np.sqrt(2)) * np.asarray([0, 1, 1, 0])
         self.assertAlmostEqual(np.sum(np.abs(wf - target)), 0,places=6)
 
+    def test_mps_qutip_ket(self):
+        import qutip as qt
+        L = 2
+        psi = build_ghz_plus(L)
+        ket = psi.to_qutip_ket()
+        target = (1.0/np.sqrt(2)) * ( qt.tensor([qt.basis(2,0), qt.basis(2,1)])
+                                        + qt.tensor([qt.basis(2,1), qt.basis(2,0)]))
+        self.assertAlmostEqual(qt.fidelity(ket,target ), 1., places=6)
+
 if __name__=='__main__':
     unittest.main()
