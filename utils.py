@@ -1,6 +1,7 @@
 from torch.utils.data import TensorDataset
 import numpy as np
 import scipy as sp
+import qutip as qt
 import scipy.linalg
 import zgesvd
 import torch
@@ -202,7 +203,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             val_ds = None, 
                             s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
-                            ground_truth_mps = None, verbose=False, use_cache=True, 
+                            ground_truth_mps = None, ground_truth_qutip = None,
+                             verbose=False, use_cache=True, 
                             record_eigs=True, record_s2=True, early_stopping=True, 
                             compute_overlaps=True, spinconfig_all=None, rotations_all=None):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
@@ -220,6 +222,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         that returns such
         ground_truth_mps: if not None, an MPS against which the model's fidelity will be checked after
         every sweep.
+        ground_truth_qutip: if not None, qutip state against which the model's fidelity is checked after each epoch
         use_cache: whether to cache partial amplitudes during the sweeps.
         record_eigs: whether to record eigenvalues of the half-chain density op.
         record_s2: whether to record the Renyi-2 entropy of the half-chain density op.
@@ -245,7 +248,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #logging the loss function
     losses = []
     #if ground-truth MPS is known, compute fidelity at each step
-    fidelities = []
+    fidelities_mps = []
+    #same, for ground_truth qutip state
+    fidelities_qutip = []
     # record max bond_dim
     max_bond_dim = []
     #record eigenspectrum cutting across chain center
@@ -318,14 +323,14 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                                      max_sv_to_keep=max_sv,
                                     learning_rate=lr, s2_penalty=_s2_penalty, use_cache=use_cache)
 
-        if verbose:
-            print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
-            print("Model shape: ", mps_model.shape)
+
         with torch.no_grad():
             #record batched loss functions
             losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
             if ground_truth_mps is not None:
-                fidelities.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
+                fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
+            if ground_truth_qutip is not None:
+                fidelities_qutip.append( qt.fidelity(ground_truth_qutip, mps_model.to_qutip_ket()))
             max_bond_dim.append(mps_model.max_bond_dim)
             if compute_overlaps:
                 mu, sig, convergence_acheived = estimate_overlap(mps_model, spinconfig_all, rotations_all, eps=1e-2, Nsample=10)
@@ -341,9 +346,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                         if verbose:
                             print("Val score not decreasing, halting training")
                         break
+        if verbose:
+            print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
+            print("Model shape: ", mps_model.shape)
         
     return dict(loss=np.asarray(losses),
-                fidelity=np.asarray(fidelities),
+                fidelity_mps=np.asarray(fidelities_mps),
+                fidelity_qutip = np.asarray(fidelities_qutip),
                 max_bond_dim=max_bond_dim, 
                 eigenvalues=eigenvalues,
                 s2=np.asarray(s2), 
@@ -371,7 +380,7 @@ def train_from_dataset(meas_ds,
                 val_ds=None,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
-                ground_truth_mps=None, use_cache=True, seed=None, 
+                ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
                 compute_overlaps=True):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
@@ -396,7 +405,7 @@ def train_from_dataset(meas_ds,
                                     s2_penalty=s2_penalty,cutoff=cutoff,
                                     max_sv_to_keep=max_sv_to_keep,
                                     use_cache=use_cache,
-                                    ground_truth_mps=ground_truth_mps, 
+                                    ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip,
                                     record_eigs=record_eigs, record_s2=record_s2,
                                     early_stopping=early_stopping,verbose=verbose,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all)

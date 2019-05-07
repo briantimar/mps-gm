@@ -92,6 +92,15 @@ def get_bloch_state(n):
         raise ValueError("Not a valid Bloch state")
     return .5 * (qt.identity(2) + n[0] * qt.sigmax() + n[1] * qt.sigmay() + n[2] * qt.sigmaz())
 
+def get_ghz_state(L, phase=0):
+    """ Returns ghz pure state with given phase"""
+    a = np.asarray([0, 1]*(L//2) + [0]*(L%2))
+    b=1-a
+    psi1 = qt.tensor([qt.basis(2, x) for x in a])
+    psi2 = qt.tensor([qt.basis(2, x) for x in b])
+    
+    return (1.0/np.sqrt(2)) * (psi1 + np.exp(1j*phase)*psi2)
+
 # Projectors for synthetic experiments.
 def get_pauli(which):
     """Single Pauli operator.
