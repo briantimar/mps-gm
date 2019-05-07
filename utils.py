@@ -4,6 +4,7 @@ import scipy as sp
 import scipy.linalg
 import zgesvd
 import torch
+import warnings
 
 def svd(A, cutoff=1e-8, max_sv_to_keep=None):
     """ Perform singular value decomp of complex matrix A.
@@ -514,6 +515,46 @@ def estimate_fidelity(mps, spin_config, rotations):
     d = mps.local_dim
     return (torch.pow(-1, D) * torch.pow(d, mps.L - D)).mean()
 
+
+def scale_fidelity_estimate(mps, spin_config, rotations, eps=1e-2, Nsample=10):
+    """ Compute fidelity estimates on successively larger training set sizes until
+        convergence within eps is obtained.
+        spin_config: (N, L) tensor of basis-state outcomes
+        rotations: (N, L, 2) complextensor of corresponding local unitaries:
+        eps: convergence tolerance. When the mean fidelity changes between sample sizes by less than this fraction, 
+        scaling in system size is halted.
+        Nsample: number of datasets of each size to sample.
+        
+        Returns: numpy arrays N, mean_fidelity, err_fidelity holding the sample sizes tried, the mean fidelity estimate at each, 
+        and the standard error of the mean."""
+    Ntot = spin_config.size(0)
+    N = Ntot //10
+    dN = N
+    diff = 1
+    prev_est = None
+    estimates_by_size = []
+    stat_errs_by_size = []
+    sample_sizes = []
+    while diff > eps and N < Ntot:
+        sample_sizes.append(N)
+        estimates = []
+        for j in range(Nsample):
+            perm = torch.randperm(Ntot)
+            s = spin_config[perm, ...][:N]
+            rot = rotations[perm, ...][:N]
+            estimates.append(estimate_fidelity(mps, s, rot))
+        #fidelity estimate and SEM for a fixed sample size.
+        mu, sig = np.mean(estimates), np.std(estimates)/ np.sqrt(Nsample)
+        if prev_est is not None:
+            diff = np.abs(prev_est - mu) / prev_est
+        estimates_by_size.append(mu)
+        stat_errs_by_size.append(sig)
+        prev_est = mu
+        N += dN
+    if diff > eps:
+        warnings.warn("Fidelity estimate failed to converge within tolerance {0:.2e}".format(eps))
+    #return: mean fidelity estimate at terminating sample size, relative diff, statistical error
+    return np.asarray(sample_sizes), np.asarray(estimates_by_size), np.asarray(stat_errs_by_size)
 
 
 def make_linear_schedule(start, finish, epochs):
