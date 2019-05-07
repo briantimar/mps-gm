@@ -495,9 +495,25 @@ def do_validation(train_ds, val_ds,
         scores[i] = score
     return scores
 
-            
-    
-    
+def hamming_distance(s1, s2):
+    """ The Hamming distance between two (N, L) spin configurations."""
+    return (s1!=s2).sum(1)
+
+def estimate_fidelity(mps, spin_config, rotations):
+    """ Estimate the fidelity between an MPS and the quantum state which produced a particular set of data.
+        mps: an MPS model
+        spin_config: (N, L) tensor of measurement outcomes, as indices of basis states.
+        rotations: corresponding (N, L, 2) random unitary ComplexTensor
+        Nsamp: how many samples to drawn from the MPS
+        returns: estimate of the overlap fidelity according to eqn (34) of https://arxiv.org/pdf/1812.02624.pdf
+        """
+    N = spin_config.size(0)
+    samples = mps.sample(N, rotations=rotations)
+    #(N)
+    D = hamming_distance(spin_config, samples).to(dtype=torch.float)
+    d = mps.local_dim
+    return (torch.pow(-1, D) * torch.pow(d, mps.L - D)).mean()
+
 
 
 def make_linear_schedule(start, finish, epochs):
