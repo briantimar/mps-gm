@@ -500,8 +500,8 @@ def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
     return (s1!=s2).sum(1)
 
-def estimate_fidelity(mps, spin_config, rotations):
-    """ Estimate the fidelity between an MPS and the quantum state which produced a particular set of data.
+def random_unitary_overlap_estimate(mps, spin_config, rotations):
+    """ Estimate the overlap between an MPS and the quantum state which produced a particular set of data.
         mps: an MPS model
         spin_config: (N, L) tensor of measurement outcomes, as indices of basis states.
         rotations: corresponding (N, L, 2) random unitary ComplexTensor
@@ -516,17 +516,20 @@ def estimate_fidelity(mps, spin_config, rotations):
     return (torch.pow(-1, D) * torch.pow(d, mps.L - D)).mean()
 
 
-def scale_fidelity_estimate(mps, spin_config, rotations, eps=1e-2, Nsample=10):
-    """ Compute fidelity estimates on successively larger training set sizes until
+def scale_overlap_estimate(mps, spin_config, rotations, eps=1e-2, Nsample=10):
+    """ Compute overlap estimates on successively larger training set sizes until
         convergence within eps is obtained.
         spin_config: (N, L) tensor of basis-state outcomes
         rotations: (N, L, 2) complextensor of corresponding local unitaries:
-        eps: convergence tolerance. When the mean fidelity changes between sample sizes by less than this fraction, 
+        eps: convergence tolerance. When the mean overlap changes between sample sizes by less than this fraction, 
         scaling in system size is halted.
         Nsample: number of datasets of each size to sample.
         
-        Returns: numpy arrays N, mean_fidelity, err_fidelity holding the sample sizes tried, the mean fidelity estimate at each, 
-        and the standard error of the mean."""
+        
+        Returns: numpy arrays N, mean_overlap, err_overlap, convergence_acheived
+             N, mean_overlap, err_overlap: hold the sample sizes tried, the mean overlap estimate at each, 
+        and the standard error of the mean.
+            convergence_acheived: bool, whether convergence was acheived within specified tolerance."""
     Ntot = spin_config.size(0)
     N = Ntot //10
     dN = N
@@ -542,8 +545,8 @@ def scale_fidelity_estimate(mps, spin_config, rotations, eps=1e-2, Nsample=10):
             perm = torch.randperm(Ntot)
             s = spin_config[perm, ...][:N]
             rot = rotations[perm, ...][:N]
-            estimates.append(estimate_fidelity(mps, s, rot))
-        #fidelity estimate and SEM for a fixed sample size.
+            estimates.append(random_unitary_overlap_estimate(mps, s, rot))
+        #overlap estimate and SEM for a fixed sample size.
         mu, sig = np.mean(estimates), np.std(estimates)/ np.sqrt(Nsample)
         if prev_est is not None:
             diff = np.abs(prev_est - mu) / prev_est
@@ -551,10 +554,29 @@ def scale_fidelity_estimate(mps, spin_config, rotations, eps=1e-2, Nsample=10):
         stat_errs_by_size.append(sig)
         prev_est = mu
         N += dN
+    convergence_acheived = True
     if diff > eps:
-        warnings.warn("Fidelity estimate failed to converge within tolerance {0:.2e}".format(eps))
-    #return: mean fidelity estimate at terminating sample size, relative diff, statistical error
-    return np.asarray(sample_sizes), np.asarray(estimates_by_size), np.asarray(stat_errs_by_size)
+        warnings.warn("overlap estimate failed to converge within tolerance {0:.2e}".format(eps))
+        convergence_acheived = False
+    #return: mean overlap estimate at terminating sample size, relative diff, statistical error
+    return np.asarray(sample_sizes), np.asarray(estimates_by_size), np.asarray(stat_errs_by_size), convergence_acheived
+
+def estimate_overlap(mps, spin_config, rotations, eps=1e-2, Nsample=10):
+    """ Estimate the overlap tr(rho1 rho2) between the mps and the state that produced a given dataset.
+        mps: MPS pure state model. 
+        spin_config: (N, L) tensor of basis state outcomes
+        rotations: (N, L, 2) complextensor of corresponding local rotations.
+        eps: relative convergence criterion for the overlap, default 1e-2
+        Nsample: how many times to sample each dataset size when scaling up the overlap estimates.
+        Returns: overlap estimate, err, convergence_acheived (bool)
+            error is defined by the larger of: statistical error at the final subset size sampled, 
+             change in fidelity when increasing system size to final value.
+        """
+    __, mean_by_size, stat_err_by_size, convergence_acheived = scale_overlap_estimate(mps, spin_config, rotations, 
+                                                                            eps=eps, Nsample=Nsample)
+    overlap_est = mean_by_size[-1]
+    overlap_err = max(stat_err_by_size[-1], np.abs(overlap_est - mean_by_size[-2]))
+    return overlap_est, overlap_err, convergence_acheived
 
 
 def make_linear_schedule(start, finish, epochs):
