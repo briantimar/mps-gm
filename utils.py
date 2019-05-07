@@ -384,10 +384,10 @@ def train_from_dataset(meas_ds,
     N = len(meas_ds)
     if verbose:
         print("Training on system size %d with %d samples"%(L, N))
+    spinconfig_all, rotations_all= None, None
     if compute_overlaps:
         #overlaps computed on full dataset
-        spinconfig_all = meas_ds[:]['samples']
-        Ur
+        spinconfig_all, rotations_all = meas_ds.unpack()
     dl = DataLoader(meas_ds, batch_size=batch_size, shuffle=True)
     #train a model
     model = MPS(L, local_dim=2, bond_dim=2)
@@ -399,7 +399,7 @@ def train_from_dataset(meas_ds,
                                     ground_truth_mps=ground_truth_mps, 
                                     record_eigs=record_eigs, record_s2=record_s2,
                                     early_stopping=early_stopping,verbose=verbose,
-                                    estimate_overlap=estimate_overlap, spinconfig_all=spinconfig_all, rotations_all=rotations_all)
+                                   compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -455,7 +455,7 @@ def evaluate(train_ds, val_ds,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
                  early_stopping=True,
-                 verbose=False):
+                 verbose=False, compute_overlaps=False):
     """ Train a model on the given training MeasurementDataset, computing its NLL cost function on 
     the held-out validation set.
     Returns: trained model, training logdict"""
@@ -466,7 +466,8 @@ def evaluate(train_ds, val_ds,
                         max_sv_to_keep=max_sv_to_keep,
                         ground_truth_mps=None, use_cache=use_cache, seed=seed, 
                         record_eigs=False, record_s2=False, 
-                        early_stopping=early_stopping, verbose=verbose)
+                        early_stopping=early_stopping, verbose=verbose, 
+                        compute_overlaps=compute_overlaps)
   
     return model, logdict
 
@@ -507,7 +508,8 @@ def do_validation(train_ds, val_ds,
             try:
                 __, logdict = evaluate(train_ds, val_ds, learning_rate, batch_size, epochs, 
                                         s2_penalty=s2_penalty, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep, 
-                                        use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=verbose)
+                                        use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=verbose,
+                                        compute_overlaps=False)
                 newscore = logdict['val_loss'][-1]
             except:
                 print("Training failed")
