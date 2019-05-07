@@ -510,6 +510,39 @@ def do_validation(train_ds, val_ds,
         scores[i] = score
     return scores
 
+def select_hyperparams(train_ds, val_ds, batch_size, epochs,
+                 Nparam=20, 
+                 cutoff=1e-10,
+                 max_sv_to_keep = None,
+                 use_cache=True, seed=None, 
+                 early_stopping=True,
+                 verbose=False,
+                 ):
+    """ Obtain hyperparams by validation.
+        hyperparams validated are lr and s2_penalty. """
+    
+    s2_scale = 10**np.random.uniform(-4, 0, Nparam)
+    s2_timescale = np.random.uniform(.2, 1) * epochs
+    lr_scale = 10**np.random.uniform(-6, 0, Nparam)
+    lr_timescale = np.random.uniform(.5, 10, Nparam)
+
+    lr = [make_exp_schedule(A, tau) for (A, tau) in zip(lr_scale, lr_timescale)]
+    s2 = [make_exp_schedule(A, tau) for (A, tau) in zip(s2_scale, s2_timescale)]
+    params = [dict(learning_rate=lr[i],s2_penalty=s2[i]) for i in range(Nparam)]
+
+    val_scores = do_validation(train_ds, val_ds, 
+                            batch_size, epochs,
+                            params, 
+                            cutoff=cutoff,
+                            max_sv_to_keep=max_sv_to_keep,
+                            use_cache=use_cache, seed=seed, 
+                            early_stopping=early_stopping,
+                            verbose=verbose)
+    best_index = np.argmax(val_scores)
+    return params[best_index]
+
+
+
 def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
     return (s1!=s2).sum(1)
