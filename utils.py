@@ -610,6 +610,70 @@ def select_hyperparams_and_train(ds,
                                         record_s2=record_s2,verbose=verbose,compute_overlaps=compute_overlaps)
     return model, logdict, params, trloss, valloss
 
+
+
+
+def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir, 
+                                    lr_scale, lr_timescale, s2_scale, s2_timescale,
+                                numpy_seed=0, 
+                                N=None, val_split=.2, 
+                                Nparam=50, nseed=1, 
+                                epochs=500, cutoff=1e-5, max_sv=25, batch_size=1024, 
+                                use_cache=True, early_stopping=True, verbose=True):
+    """ Select hyperparams by training on the given datasets. 
+        fname_outcomes: file path to numpy array holding measurement outcomes.
+        fname_angles: filepath to numpy array holding angles.
+        output dir: directory to write validation results to.
+        The learning rate and s2 penalty and parameterized with exponential decay schedules, 
+            f(epoch) = A * exp(-epoch / timescale)
+        lr_scale, s2_scale: the 'A' coefficient for learning rate and S2 penalty respectively
+        lr_timescale, s2_timescale: the 'timescale' coefficient for learning rate and S2 penalty """
+    import os
+    from torch.utils.data import random_split
+    from qtools import pauli_exp
+    
+    pauli_outcomes = np.load(fname_outcomes)
+    angles = np.load(fname_angles)
+
+    np.random.seed(numpy_seed)
+    np.random.shuffle(pauli_outcomes)
+    np.random.shuffle(angles)
+    if N is not None:
+        pauli_outcomes=pauli_outcomes[:N, ...]
+        angles = angles[:N, ...]
+    N = angles.shape[0]
+    L = angles.shape[1]
+    if verbose:
+        print("Successfully loaded settings, samples, and mps for GHZ size L=%d"%L)
+        print("total number of samples: %d"%N)
+
+    spinconfig = torch.tensor((1 -pauli_outcomes)/2, dtype=torch.long)
+    theta = torch.tensor(angles[..., 0],dtype=torch.float)
+    phi = torch.tensor(angles[..., 1], dtype=torch.float)
+    rotations = pauli_exp(theta, phi)
+
+    ds = MeasurementDataset(spinconfig, rotations)
+    Nval = int(val_split * N)
+    Ntr = N - Nval
+    train_ds, val_ds = random_split(ds, [Ntr, Nval])
+
+    Nparam = len(lr_scale)
+    for param_array in (lr_timescale, s2_scale, s2_timescale):
+        if len(param_array) != Nparam:
+            raise ValueError("param array has inconsistent length.")
+
+    seeds = range(nseed)
+
+    params, trlosses, vallosses = select_hyperparams(train_ds, val_ds, batch_size, epochs,
+                                                        Nparam=Nparam,lr_scale=lr_scale, lr_timescale=lr_timescale,
+                                                        s2_scale=s2_scale, s2_timescale=s2_timescale, cutoff=cutoff,
+                                                        max_sv_to_keep=max_sv, use_cache=use_cache, seed=seeds,
+                                                        early_stopping=early_stopping, verbose=verbose)
+    print("Finished hyperparam selection")
+    np.save(os.path.join(output_dir, 'validated_params'), params)
+    np.save(os.path.join(output_dir, 'trlosses'), trlosses)
+    np.save(os.path.join(output_dir, 'vallosses'), vallosses)
+
 def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
     return (s1!=s2).sum(1)
