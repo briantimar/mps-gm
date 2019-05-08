@@ -19,7 +19,7 @@ from utils import select_hyperparams_from_filepath
 # some default settings
 Nparam=50
 EPOCHS = 500
-lr_scale = 10**np.random.uniform(-7, 0, Nparam)
+lr_scale = 10**np.random.uniform(-7, -3, Nparam)
 lr_timescale = np.random.uniform(.5, 10, Nparam) * EPOCHS
 s2_scale = 10**np.random.uniform(-7, 0, Nparam)
 s2_timescale = np.random.uniform(.2, 10, Nparam) * EPOCHS
@@ -36,23 +36,30 @@ parser.add_argument('outcomes_path', help="Filepath to numpy array holding Pauli
 parser.add_argument('angles_path', help="Filepath to numpy array holding local-rotation angles")
 parser.add_argument('output_dir', help="Directory to write validated params and losses")
 parser.add_argument('--epochs', help="Number of epochs to train.", 
-                                default=EPOCHS)
+                                default=EPOCHS,
+                                type=int)
 parser.add_argument('--batch_size', help="Batch size for training", 
-                                default=BATCH_SIZE)
-
+                                default=BATCH_SIZE,
+                                type=int)
 parser.add_argument('--numseed', help="How many different MPS models to average over for a given hyperparameter setting", 
-                                default=NUMSEED)
+                                default=NUMSEED,
+                                type=int)
 parser.add_argument('--early_stopping', help="Whether or not to stop training early based on val performance", 
+                                action='store_true',
                                 default=EARLY_STOPPING)
 parser.add_argument('--max_sv', help="Max number of singular values to keep at truncation steps", 
-                                default=MAX_SV)
+                                default=MAX_SV,
+                                type=int)
 parser.add_argument('--cutoff', help="Truncation threshold for singular values", 
-                                default=CUTOFF)
+                                default=CUTOFF,
+                                type=float)
 parser.add_argument('--size', help="Size of the total dataset (tr + val) to use. If not provided, full dataset is used", 
-                                default=None)
+                                default=None,
+                                type=int)
 parser.add_argument('--val_split', help="Fraction of the data to use for validation", 
-                                default=VAL_SPLIT)
-parser.add_argument('--verbose', help="Whether to print training information", 
+                                default=VAL_SPLIT,
+                                type=float)
+parser.add_argument('--verbose', help="Whether to print training information", action='store_true',
                                 default=True)
 if __name__ == '__main__': 
     args = parser.parse_args()
@@ -63,3 +70,4 @@ if __name__ == '__main__':
                                     Nparam=Nparam, nseed=args.numseed, 
                                     epochs=args.epochs, cutoff=args.cutoff, max_sv=args.max_sv, batch_size=args.batch_size, 
                                     use_cache=True, early_stopping=args.early_stopping, verbose=args.verbose)
+    

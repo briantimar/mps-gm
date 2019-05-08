@@ -514,7 +514,6 @@ def do_validation(train_ds, val_ds,
             except Exception as e:
                 print("Training failed:")
                 print(e)
-                raise e
                 _score = np.inf
             _scores.append(_score)
         score = np.mean(_scores)
@@ -631,7 +630,8 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
     import os
     from torch.utils.data import random_split
     from qtools import pauli_exp
-    
+    import json
+
     pauli_outcomes = np.load(fname_outcomes)
     angles = np.load(fname_angles)
 
@@ -663,6 +663,15 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
             raise ValueError("param array has inconsistent length.")
 
     seeds = range(nseed)
+    metadata = dict(lr_scale=list(lr_scale), lr_timescale=list(lr_timescale), 
+                    s2_scale=list(s2_scale), s2_timescale=list(s2_timescale),
+                    Ntotal=N,val_split=val_split,Nparam=Nparam,
+                    nseed=nseed,epochs=epochs,cutoff=cutoff,
+                        max_sv=max_sv, batch_size=batch_size,
+                        use_cache=use_cache,early_stopping=early_stopping)
+                        
+    with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
+        json.dump(metadata, f)
 
     params, trlosses, vallosses = select_hyperparams(train_ds, val_ds, batch_size, epochs,
                                                         Nparam=Nparam,lr_scale=lr_scale, lr_timescale=lr_timescale,
