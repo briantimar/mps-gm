@@ -610,7 +610,37 @@ def select_hyperparams_and_train(ds,
     return model, logdict, params, trloss, valloss
 
 
+def get_dataset_from_settings_and_samples(fname_outcomes, fname_angles, numpy_seed=None, N=None, verbose=True):
+    """ Returns MeasurementDataset corresponding to the pauli outcomes and local rotation angles in the specified files.
+        N : if not None, how many samples to load. None-> load all samples
+    """
+    
+    from qtools import pauli_exp
 
+    pauli_outcomes = np.load(fname_outcomes)
+    angles = np.load(fname_angles)
+
+    if numpy_seed is not None:
+        np.random.seed(numpy_seed)
+        perm = np.random.permutation(angles.shape[0])
+        angles = angles[perm, ...]
+        pauli_outcomes = pauli_outcomes[perm, ...]
+
+    if N is not None:
+        pauli_outcomes=pauli_outcomes[:N, ...]
+        angles = angles[:N, ...]
+        
+    N = angles.shape[0]
+    L = angles.shape[1]
+    if verbose:
+        print("Successfully loaded %d settings, samples for system of size L=%d"%(N,L))
+
+    spinconfig = torch.tensor((1 -pauli_outcomes)/2, dtype=torch.long)
+    theta = torch.tensor(angles[..., 0],dtype=torch.float)
+    phi = torch.tensor(angles[..., 1], dtype=torch.float)
+    rotations = pauli_exp(theta, phi)
+
+    return MeasurementDataset(spinconfig, rotations)
 
 def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir, 
                                     lr_scale, lr_timescale, s2_scale, s2_timescale,
@@ -629,30 +659,10 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
         lr_timescale, s2_timescale: the 'timescale' coefficient for learning rate and S2 penalty """
     import os
     from torch.utils.data import random_split
-    from qtools import pauli_exp
     import json
 
-    pauli_outcomes = np.load(fname_outcomes)
-    angles = np.load(fname_angles)
 
-    np.random.seed(numpy_seed)
-    np.random.shuffle(pauli_outcomes)
-    np.random.shuffle(angles)
-    if N is not None:
-        pauli_outcomes=pauli_outcomes[:N, ...]
-        angles = angles[:N, ...]
-    N = angles.shape[0]
-    L = angles.shape[1]
-    if verbose:
-        print("Successfully loaded settings, samples, and mps for GHZ size L=%d"%L)
-        print("total number of samples: %d"%N)
-
-    spinconfig = torch.tensor((1 -pauli_outcomes)/2, dtype=torch.long)
-    theta = torch.tensor(angles[..., 0],dtype=torch.float)
-    phi = torch.tensor(angles[..., 1], dtype=torch.float)
-    rotations = pauli_exp(theta, phi)
-
-    ds = MeasurementDataset(spinconfig, rotations)
+    ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
     Nval = int(val_split * N)
     Ntr = N - Nval
     train_ds, val_ds = random_split(ds, [Ntr, Nval])
@@ -669,7 +679,7 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
                     nseed=nseed,epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
                         use_cache=use_cache,early_stopping=early_stopping)
-                        
+
     with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f)
 
@@ -682,6 +692,75 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
     np.save(os.path.join(output_dir, 'validated_params'), params)
     np.save(os.path.join(output_dir, 'trlosses'), trlosses)
     np.save(os.path.join(output_dir, 'vallosses'), vallosses)
+
+def to_json(d):
+    for k, v in enumerate(d):
+        if isinstance(v, np.ndarray):
+            d[k] = list(v)
+
+def train_from_filepath(fname_outcomes, fname_angles, 
+                                    lr_scale, lr_timescale, s2_scale, s2_timescale,
+                                ground_truth_mps_path=None,
+                                ground_truth_qutip_path=None,
+                                numpy_seed=0, 
+                                N=None,seed=None,
+                                epochs=500, cutoff=1e-5, max_sv=25, batch_size=1024, 
+                                record_eigs=False, record_s2=True,
+                                compute_overlaps=True,
+                                use_cache=True, verbose=True):
+    """ Train mps on given dataset.
+        fname_outcomes: file path to numpy array holding measurement outcomes.
+        fname_angles: filepath to numpy array holding angles.
+        output dir: directory to write validation results to.
+        The learning rate and s2 penalty and parameterized with exponential decay schedules, 
+            f(epoch) = A * exp(-epoch / timescale)
+        lr_scale, s2_scale: the 'A' coefficient for learning rate and S2 penalty respectively
+        lr_timescale, s2_timescale: the 'timescale' coefficient for learning rate and S2 penalty """
+
+    ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
+    L=ds[0]['samples'].size(0)
+
+    if ground_truth_mps_path is not None:
+        print("loading ground truth MPS from ", ground_truth_mps_path)
+        from models import MPS
+        ground_truth_mps = MPS(L, 2, 2)
+        ground_truth_mps.load(ground_truth_mps_path)
+    else:
+        ground_truth_mps = None
+    if ground_truth_qutip_path is not None:
+        print("Loading ground truth qutip state from ", ground_truth_qutip_path)
+        import qutip as qt
+        ground_truth_qutip = qt.qload(ground_truth_qutip_path)
+    else:
+        ground_truth_qutip = None
+    
+    metadata = dict(fname_outcomes=fname_outcomes, fname_angles=fname_angles, 
+                    ground_truth_mps_path=ground_truth_mps_path,
+                    ground_truth_qutip_path=ground_truth_qutip_path,
+                    lr_scale=lr_scale, lr_timescale=lr_timescale, 
+                    s2_scale=s2_scale, s2_timescale=s2_timescale,
+                    Ntotal=N,
+                    seed=seed,
+                    epochs=epochs,cutoff=cutoff,
+                        max_sv=max_sv, batch_size=batch_size,
+                        use_cache=use_cache)
+                        
+    learning_rate = make_exp_schedule(lr_scale, lr_timescale)
+    s2_penalty = make_exp_schedule(s2_scale, s2_timescale)
+
+    model, logdict = train_from_dataset(ds,
+                            learning_rate, batch_size, epochs,
+                            val_ds=None,
+                            s2_penalty=s2_penalty, cutoff=cutoff,
+                            max_sv_to_keep=max_sv,
+                            ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip, 
+                            use_cache=use_cache, seed=seed, 
+                            record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
+                            compute_overlaps=compute_overlaps)
+    
+
+    print("Finished training")
+    return model, logdict, metadata
 
 def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
