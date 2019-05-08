@@ -290,7 +290,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             spinconfig = inputs['samples']
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
- 
+
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -391,6 +391,8 @@ def train_from_dataset(meas_ds,
         torch.manual_seed(seed)
     L = meas_ds[0]['samples'].size(0)
     N = len(meas_ds)
+    #check format of rotations
+    r0 = meas_ds[0]['rotations']
     if verbose:
         print("Training on system size %d with %d samples"%(L, N))
     spinconfig_all, rotations_all= None, None
@@ -509,8 +511,10 @@ def do_validation(train_ds, val_ds,
                 _valloss = logdict['val_loss']
                 _score = _valloss[-1]
                 
-            except:
-                print("Training failed")
+            except Exception as e:
+                print("Training failed:")
+                print(e)
+                raise e
                 _score = np.inf
             _scores.append(_score)
         score = np.mean(_scores)
@@ -704,6 +708,8 @@ class MeasurementDataset(TensorDataset):
         super().__init__()
         if samples.shape[0] != rotations.shape[0]:
             raise ValueError
+        if tuple(rotations.shape[-2:])!= (2,2):
+            raise ValueError("Not a valid rotation")
         self.samples = TensorDataset(samples)
         self.rotations = TensorDataset(rotations)
 
