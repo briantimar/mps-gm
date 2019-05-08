@@ -525,6 +525,7 @@ def do_validation(train_ds, val_ds,
 
 def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                  Nparam=20, 
+                lr_scale=None, lr_timescale=None,s2_scale=None, s2_timescale=None, 
                  cutoff=1e-10,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
@@ -534,10 +535,19 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
     """ Obtain hyperparams by validation.
         hyperparams validated are lr and s2_penalty. """
     
-    s2_scale = 10**np.random.uniform(-4, 0, Nparam)
-    s2_timescale = np.random.uniform(.2, 1,Nparam) * epochs
-    lr_scale = 10**np.random.uniform(-6, 0, Nparam)
-    lr_timescale = np.random.uniform(.5, 10, Nparam)
+    if s2_scale is None:
+        s2_scale = 10**np.random.uniform(-4, 0, Nparam)
+    if s2_timescale is None:
+        s2_timescale = np.random.uniform(.2, 1,Nparam) * epochs
+    if lr_scale is None:
+        lr_scale = 10**np.random.uniform(-6, 0, Nparam)
+    if lr_timescale is None:
+        lr_timescale = np.random.uniform(.5, 10, Nparam) * epochs
+    
+    for param_arr in (lr_scale, lr_timescale, s2_scale, s2_timescale):
+        if len(param_arr) != Nparam:
+            raise ValueError("param array length does not match param number")
+
 
     lr = [make_exp_schedule(A, tau) for (A, tau) in zip(lr_scale, lr_timescale)]
     s2 = [make_exp_schedule(A, tau) for (A, tau) in zip(s2_scale, s2_timescale)]
