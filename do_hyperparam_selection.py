@@ -19,7 +19,7 @@ from utils import select_hyperparams_from_filepath
 # some default settings
 Nparam=50
 EPOCHS = 500
-lr_scale = 10**np.random.uniform(-7, -3, Nparam)
+lr_scale = 10**np.random.uniform(-6, -2, Nparam)
 lr_timescale = np.random.uniform(.5, 10, Nparam) * EPOCHS
 s2_scale = 10**np.random.uniform(-7, 0, Nparam)
 s2_timescale = np.random.uniform(.2, 10, Nparam) * EPOCHS
