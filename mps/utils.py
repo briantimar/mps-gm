@@ -664,6 +664,7 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
 
 
     ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
+    N=len(ds)
     Nval = int(val_split * N)
     Ntr = N - Nval
     train_ds, val_ds = random_split(ds, [Ntr, Nval])
