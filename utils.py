@@ -6,6 +6,7 @@ import scipy.linalg
 import zgesvd
 import torch
 import warnings
+import json
 
 def svd(A, cutoff=1e-8, max_sv_to_keep=None):
     """ Perform singular value decomp of complex matrix A.
@@ -629,7 +630,7 @@ def get_dataset_from_settings_and_samples(fname_outcomes, fname_angles, numpy_se
     if N is not None:
         pauli_outcomes=pauli_outcomes[:N, ...]
         angles = angles[:N, ...]
-        
+
     N = angles.shape[0]
     L = angles.shape[1]
     if verbose:
@@ -699,26 +700,51 @@ def to_json(d):
             d[k] = list(v)
 
 def train_from_filepath(fname_outcomes, fname_angles, 
-                                    lr_scale, lr_timescale, s2_scale, s2_timescale,
-                                ground_truth_mps_path=None,
-                                ground_truth_qutip_path=None,
-                                numpy_seed=0, 
-                                N=None,seed=None,
-                                epochs=500, cutoff=1e-5, max_sv=25, batch_size=1024, 
-                                record_eigs=False, record_s2=True,
-                                compute_overlaps=True,
-                                use_cache=True, verbose=True):
+                                    fname_training_metadata,
+                                    numpy_seed=0, 
+                                    N=None,seed=None,
+                                    record_eigs=False, record_s2=True,
+                                    compute_overlaps=True, use_cache=True,
+                                    verbose=True):
     """ Train mps on given dataset.
         fname_outcomes: file path to numpy array holding measurement outcomes.
         fname_angles: filepath to numpy array holding angles.
+        fname_training_metadata: path to json file holding training metadata.
+            This should hold all of the necessary training hyperparameters, as well as 
+        paths to the ground truth states if desired.
         output dir: directory to write validation results to.
         The learning rate and s2 penalty and parameterized with exponential decay schedules, 
             f(epoch) = A * exp(-epoch / timescale)
         lr_scale, s2_scale: the 'A' coefficient for learning rate and S2 penalty respectively
         lr_timescale, s2_timescale: the 'timescale' coefficient for learning rate and S2 penalty """
 
+    #load a measurement dataset from the spec'd numpy files
     ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
     L=ds[0]['samples'].size(0)
+
+    #load training hyperparams from json
+    print("Loading training settings from", fname_training_metadata)
+    with open(fname_training_metadata) as f:
+        training_metadata = json.load(f)
+
+    #training hyperparameters
+    lr_scale = training_metadata['lr_scale']
+    lr_timescale = training_metadata['lr_timescale']
+    s2_scale = training_metadata['s2_scale']
+    s2_timescale = training_metadata['s2_timescale']
+    epochs = training_metadata['epochs']
+    cutoff = training_metadata['cutoff']
+    max_sv= training_metadata['max_sv']
+    batch_size = training_metadata['batch_size']
+
+    if verbose:
+        print("Loaded the following settings:")
+        for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
+            print("{0} = {1:3e}".format(setting, training_metadata[setting]))
+
+    #other settings for training...
+    ground_truth_mps_path = training_metadata.get('mps_path', None)
+    ground_truth_qutip_path = training_metadata.get('qutip_path', None)
 
     if ground_truth_mps_path is not None:
         print("loading ground truth MPS from ", ground_truth_mps_path)
@@ -733,7 +759,7 @@ def train_from_filepath(fname_outcomes, fname_angles,
         ground_truth_qutip = qt.qload(ground_truth_qutip_path)
     else:
         ground_truth_qutip = None
-    
+
     metadata = dict(fname_outcomes=fname_outcomes, fname_angles=fname_angles, 
                     ground_truth_mps_path=ground_truth_mps_path,
                     ground_truth_qutip_path=ground_truth_qutip_path,

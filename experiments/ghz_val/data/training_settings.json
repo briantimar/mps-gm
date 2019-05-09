@@ -1,0 +1,1 @@
+{"lr_scale": 0.011654002405207753, "lr_timescale": 90.58898977882967, "s2_scale": 3.1079530579214067e-06, "s2_timescale": 76.10777229920316, "Ntotal": 20000, "val_split": 0.2, "Nparam": 100, "nseed": 1, "epochs": 15, "cutoff": 1e-05, "max_sv": 10, "batch_size": 1024, "use_cache": true, "early_stopping": true, "mps_path": "../../datasets/mps_sampled/ghz_plus_L=4_state"}
