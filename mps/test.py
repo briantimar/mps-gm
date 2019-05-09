@@ -1,9 +1,9 @@
 import unittest
 from unittest import TestCase
-from utils import *
+from .utils import *
 import numpy as np
-from models import MPS
-from tools import generate_binary_space
+from .models import MPS
+from .tools import generate_binary_space
 
 
 class TestUtils(TestCase):
@@ -81,7 +81,7 @@ class TestUtils(TestCase):
 class TestQTools(TestCase):
 
     def test_pauli_exp(self):
-        from qtools import pauli_exp
+        from .qtools import pauli_exp
         theta = torch.tensor([0, np.pi/2, np.pi/2])
         phi = torch.tensor([0, 0, np.pi/2])
         U = pauli_exp(theta, phi)
@@ -154,7 +154,7 @@ class TestMPS(TestCase):
         x = torch.zeros((2, L), dtype=torch.long)
         theta = (np.pi/2) * torch.ones_like(x, dtype=torch.float)
         phi = torch.zeros_like(x, dtype = torch.float)
-        from qtools import pauli_exp
+        from .qtools import pauli_exp
         rotation = pauli_exp(theta, phi)
 
         psi.gauge_to(0)
@@ -184,7 +184,7 @@ class TestMPS(TestCase):
 
 
     def test_amplitudes(self):
-        from qtools import pauli_exp
+        from .qtools import pauli_exp
         L = 2
         psi = build_uniform_product_state(L, 0, 0)
         with torch.no_grad():
@@ -205,7 +205,7 @@ class TestMPS(TestCase):
             self.assertAlmostEqual(np.sum(np.abs(target - amp)), 0, places=6)
 
     def test_sample(self):
-        from qtools import pauli_exp
+        from .qtools import pauli_exp
         L = 2
         psi = build_uniform_product_state(L,0,0)
         N=10

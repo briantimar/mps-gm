@@ -2,6 +2,8 @@
 import qutip as qt
 import numpy as np
 import torch
+from .models import ComplexTensor
+
 
 def to_meas_setting(pauli_code, ms_type='integer'):
     """Convert a particular pauli operator 'X', 'Y', or 'Z' into a measurement
@@ -94,7 +96,6 @@ def to_cartesian(angles):
     settings = np.stack([x,y,z], axis=-1)
     return settings
 
-from models import ComplexTensor
 
 def pauli_exp(theta, phi):
     """ Return a ComplexTensor representing local unitaries specified by the

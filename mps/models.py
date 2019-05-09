@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 import warnings
 
-from utils import make_onehot
-from utils import svd_push_left, svd_push_right, split_two_site
-from utils import get_singular_vals
+from .utils import make_onehot
+from .utils import svd_push_left, svd_push_right, split_two_site
+from .utils import get_singular_vals
 
 class ComplexTensor:
 
@@ -910,14 +910,14 @@ class MPS(nn.Module):
     
     def wavefunction(self):
         """ Return the mps wavefunction as numpy array in the standard basis."""
-        from tools import generate_binary_space
+        from .tools import generate_binary_space
         basis = generate_binary_space(self.L)
         amplitudes = self.amplitude_normalized(torch.tensor(basis, dtype=torch.long))
         return amplitudes.numpy()
 
     def to_qutip_ket(self):
         """ Returns qutip ket representing the MPS"""
-        from qutip_utils import to_qutip_ket as _to_qutip_ket
+        from .qutip_utils import to_qutip_ket as _to_qutip_ket
         return _to_qutip_ket(self.wavefunction(), self.L)
 
     def save(self, fname):

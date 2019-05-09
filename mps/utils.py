@@ -3,7 +3,7 @@ import numpy as np
 import scipy as sp
 import qutip as qt
 import scipy.linalg
-import zgesvd
+from .zgesvd import svd_zgesvd
 import torch
 import warnings
 import json
@@ -24,7 +24,7 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
         """
     try:
         if A.dtype in (np.complex128, np.complex64):
-            u,s,v = zgesvd.svd_zgesvd(A, full_matrices=False, compute_uv=True)
+            u,s,v = svd_zgesvd(A, full_matrices=False, compute_uv=True)
         else:
             u,s,v = sp.linalg.svd(A, full_matrices=False)
     except Exception as e:
@@ -150,7 +150,7 @@ def make_onehot(int_tensor, n):
 
 def build_ghz_plus(L):
     """ Return normalized MPS representing a GHZ+ state of length L"""
-    from models import MPS, ComplexTensor
+    from .models import MPS, ComplexTensor
     psi = MPS(L, local_dim=2, bond_dim=2)
     with torch.no_grad():
         A0r = torch.tensor([[0, 1], [0, 0]], dtype=torch.float)
@@ -183,7 +183,7 @@ def build_ghz_plus(L):
 def build_uniform_product_state(L, theta, phi):
     """ Return uniform product state where qubit is in eigenstate of n \cdot \sigma, 
         n being the unit vector defined by polar angles (theta, phi) """
-    from models import MPS, ComplexTensor
+    from .models import MPS, ComplexTensor
     Ar = torch.tensor([np.cos(theta/2), np.sin(theta/2)
                        * np.cos(phi)]).view(2, 1, 1)
     Ai = torch.tensor([0., np.sin(phi)]).view(2, 1, 1)
@@ -196,7 +196,7 @@ def build_uniform_product_state(L, theta, phi):
 
 def build_random_mps(L, bond_dim):
     """ Build an mps with uniform bond dimension and random tensors."""
-    from models import MPS
+    from .models import MPS
     return MPS(L,local_dim=2,bond_dim=bond_dim)
 
 def do_local_sgd_training(mps_model, dataloader, epochs, 
@@ -238,7 +238,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     's2' -> renyi-2 entropy, if requested
             These quantities are recorded at the end of each epoch.
         """
-    from models import ComplexTensor
+    from .models import ComplexTensor
     import time
     if s2_penalty is None:
         s2_penalty = np.zeros(len(dataloader) * epochs)
@@ -367,8 +367,8 @@ def draw_random(mps, N):
         Returns: angles, outcomes
         where angles = (N, L, 2) tensor holding theta, phi angles 
         outcomes = (N, L) tensor of pauli eigenvalue outcomes."""
-    from qutip_utils import sample_random_angles
-    from qtools import pauli_exp
+    from .qutip_utils import sample_random_angles
+    from .qtools import pauli_exp
     angles = torch.tensor(sample_random_angles((N, mps.L)),dtype=torch.float)
     rotations = pauli_exp(angles[..., 0], angles[..., 1])
     index_outcomes = mps.sample(N, rotations=rotations).numpy()
@@ -387,7 +387,7 @@ def train_from_dataset(meas_ds,
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
-    from models import MPS
+    from .models import MPS
     if seed is not None:
         torch.manual_seed(seed)
     L = meas_ds[0]['samples'].size(0)
@@ -427,7 +427,7 @@ def do_training(angles, pauli_outcomes,
 
    
    
-    from qtools import pauli_exp
+    from .qtools import pauli_exp
     if seed is not None:
         torch.manual_seed(seed)
     
@@ -453,7 +453,7 @@ def compute_NLL(meas_ds,
                 model):
     """ Compute the NLL loss function using the given MPS model"""
     
-    from models import ComplexTensor
+    from .models import ComplexTensor
     spins_all = meas_ds[:]['samples']
     Ui = meas_ds[:]['rotations']['imag']
     Ur = meas_ds[:]['rotations']['real']
@@ -616,7 +616,7 @@ def get_dataset_from_settings_and_samples(fname_outcomes, fname_angles, numpy_se
         N : if not None, how many samples to load. None-> load all samples
     """
     
-    from qtools import pauli_exp
+    from .qtools import pauli_exp
 
     pauli_outcomes = np.load(fname_outcomes)
     angles = np.load(fname_angles)
@@ -748,7 +748,7 @@ def train_from_filepath(fname_outcomes, fname_angles,
 
     if ground_truth_mps_path is not None:
         print("loading ground truth MPS from ", ground_truth_mps_path)
-        from models import MPS
+        from .models import MPS
         ground_truth_mps = MPS(L, 2, 2)
         ground_truth_mps.load(ground_truth_mps_path)
     else:

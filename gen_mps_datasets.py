@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-from models import MPS
-from utils import build_ghz_plus, build_random_mps, draw_random
+from mps.models import MPS
+from mps.utils import build_ghz_plus, build_random_mps, draw_random
 #which values of system size to try
 system_sizes = np.arange(4, 30, 2,dtype=int)
 
@@ -21,18 +21,18 @@ for L in system_sizes:
     print("Sampling from GHZ+ state")
     ghz_plus = build_ghz_plus(L)
 
-    angles, outcomes = draw_random(ghz_plus, Nsamp)
+#     angles, outcomes = draw_random(ghz_plus, Nsamp)
 
         
-    np.save(savedir + "ghz_plus_L=%d_angles"%L, angles)
-    np.save(savedir + "ghz_plus_L=%d_outcomes" % L,outcomes)
+#     np.save(savedir + "ghz_plus_L=%d_angles"%L, angles)
+#     np.save(savedir + "ghz_plus_L=%d_outcomes" % L,outcomes)
     ghz_plus.save(savedir + "ghz_plus_L=%d_state"%L)
 
-    print("sampling from random states")
-    for D in bond_dims:
-        print("using bond dimension %d"%D)
-        psi = build_random_mps(L,D)
-        angles, outcomes = draw_random(psi, Nsamp)
-        np.save(savedir + "rand_L=%d_D=%d_angles" % (L,D), angles)
-        np.save(savedir + "rand_L=%d_D=%d_outcomes" % (L,D), outcomes)
-        psi.save(savedir + "rand_L=%d_D=%d_state" % (L,D))
+#     print("sampling from random states")
+#     for D in bond_dims:
+#         print("using bond dimension %d"%D)
+#         psi = build_random_mps(L,D)
+#         angles, outcomes = draw_random(psi, Nsamp)
+#         np.save(savedir + "rand_L=%d_D=%d_angles" % (L,D), angles)
+#         np.save(savedir + "rand_L=%d_D=%d_outcomes" % (L,D), outcomes)
+#         psi.save(savedir + "rand_L=%d_D=%d_state" % (L,D))
