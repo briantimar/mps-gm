@@ -674,15 +674,13 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
             raise ValueError("param array has inconsistent length.")
 
     seeds = range(nseed)
-    metadata = dict(lr_scale=list(lr_scale), lr_timescale=list(lr_timescale), 
-                    s2_scale=list(s2_scale), s2_timescale=list(s2_timescale),
+    metadata = dict(lr_scale_samples=list(lr_scale), lr_timescale_samples=list(lr_timescale), 
+                    s2_scale_samples=list(s2_scale), s2_timescale_samples=list(s2_timescale),
                     Ntotal=N,val_split=val_split,Nparam=Nparam,
                     nseed=nseed,epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
                         use_cache=use_cache,early_stopping=early_stopping)
 
-    with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
-        json.dump(metadata, f)
 
     params, trlosses, vallosses = select_hyperparams(train_ds, val_ds, batch_size, epochs,
                                                         Nparam=Nparam,lr_scale=lr_scale, lr_timescale=lr_timescale,
@@ -690,7 +688,13 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
                                                         max_sv_to_keep=max_sv, use_cache=use_cache, seed=seeds,
                                                         early_stopping=early_stopping, verbose=verbose)
     print("Finished hyperparam selection")
-    np.save(os.path.join(output_dir, 'validated_params'), params)
+    with open(os.path.join(output_dir, 'validated_params.json'), 'w') as f:
+        json.dump(params, f)
+    for k in params.keys():
+        metadata[k] = params[k]
+    with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
+        json.dump(metadata, f)
+
     np.save(os.path.join(output_dir, 'trlosses'), trlosses)
     np.save(os.path.join(output_dir, 'vallosses'), vallosses)
 
