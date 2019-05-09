@@ -4,10 +4,8 @@ import torch.nn as nn
 import warnings
 
 from utils import make_onehot
-#tools for SVD -- normalization and breaking two-site tensors
 from utils import svd_push_left, svd_push_right, split_two_site
 from utils import get_singular_vals
-
 
 class ComplexTensor:
 

@@ -23,8 +23,6 @@ RECORD_S2 = False
 COMPUTE_OVERLAPS = False
 USE_CACHE = True
 
-
-
 parser = argparse.ArgumentParser(description="""Trains an MPS on the specified dataset and saves it. Training hyperparameters should be specified in a single json
                                                 file; other training options are available as command line flags.""")
 parser.add_argument('outcomes_path', help="Filepath to numpy array holding Pauli measurement outcomes")
