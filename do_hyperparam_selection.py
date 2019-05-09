@@ -14,7 +14,7 @@ for i in range(len(DIR)-DEPTH):
 
 sys.path.append(ROOT_DIR)
 
-from utils import select_hyperparams_from_filepath
+from mps.utils import select_hyperparams_from_filepath
 
 # some default settings
 # TODO pass these as args...

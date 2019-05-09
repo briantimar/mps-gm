@@ -14,7 +14,7 @@ for i in range(len(DIR)-DEPTH):
 
 sys.path.append(ROOT_DIR)
 
-from utils import train_from_filepath
+from mps.utils import train_from_filepath
 
 
 #some default settings
