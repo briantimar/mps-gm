@@ -688,6 +688,8 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
                                                         s2_scale=s2_scale, s2_timescale=s2_timescale, cutoff=cutoff,
                                                         max_sv_to_keep=max_sv, use_cache=use_cache, seed=seeds,
                                                         early_stopping=early_stopping, verbose=verbose)
+    #record the number of epochs used in val params (will be less than specified in case of early stopping)
+    params['epochs'] = len(trlosses)
     print("Finished hyperparam selection")
     with open(os.path.join(output_dir, 'validated_params.json'), 'w') as f:
         json.dump(params, f)
