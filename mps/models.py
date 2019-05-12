@@ -911,7 +911,10 @@ class MPS(nn.Module):
     def wavefunction(self):
         """ Return the mps wavefunction as numpy array in the standard basis."""
         from .tools import generate_binary_space
-        basis = generate_binary_space(self.L)
+        #in this convention, 1 means excited
+        basis_states_by_occupation_number = generate_binary_space(self.L)
+        #in this convention, 0 means excited
+        basis = 1 - basis_states_by_occupation_number
         amplitudes = self.amplitude_normalized(torch.tensor(basis, dtype=torch.long))
         return amplitudes.numpy()
 

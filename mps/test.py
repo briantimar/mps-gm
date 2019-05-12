@@ -261,6 +261,11 @@ class TestMPS(TestCase):
         target = (1/np.sqrt(2)) * np.asarray([0, 1, 1, 0])
         self.assertAlmostEqual(np.sum(np.abs(wf - target)), 0,places=6)
 
+        wf = build_uniform_product_state(L, 0, 0).wavefunction()
+        target = np.asarray([1, 0, 0, 0])
+        self.assertAlmostEqual(np.sum(np.abs(wf - target)), 0)
+
+
     def test_mps_qutip_ket(self):
         import qutip as qt
         L = 2

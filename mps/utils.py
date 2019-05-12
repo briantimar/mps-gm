@@ -695,6 +695,7 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
         json.dump(params, f)
     for k in params.keys():
         metadata[k] = params[k]
+    metadata['epochs_validated'] = len(trlosses)
     with open(os.path.join(output_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f)
 
