@@ -327,7 +327,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
         with torch.no_grad():
             #record batched loss functions
-            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations))
+            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).numpy())
             if ground_truth_mps is not None:
                 fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
             if ground_truth_qutip is not None:
