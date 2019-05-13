@@ -351,16 +351,16 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
         
-    return dict(loss=np.asarray(losses),
-                fidelity_mps=np.asarray(fidelities_mps),
-                fidelity_qutip = np.asarray(fidelities_qutip),
+    return dict(loss=(losses),
+                fidelity_mps=(fidelities_mps),
+                fidelity_qutip = (fidelities_qutip),
                 max_bond_dim=max_bond_dim, 
                 eigenvalues=eigenvalues,
-                s2=np.asarray(s2), 
-                val_loss=np.asarray(val_loss), 
-                overlap=dict(mean=np.asarray(overlap), 
-                            err=np.asarray(overlap_err), 
-                            converged=np.asarray(overlap_converged)))
+                s2=(s2), 
+                val_loss=(val_loss), 
+                overlap=dict(mean=(overlap), 
+                            err=(overlap_err), 
+                            converged=(overlap_converged)))
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
