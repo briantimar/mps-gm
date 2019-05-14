@@ -299,9 +299,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 if i == L//2 - 1:
                     if record_eigs:
                         eigs = mps_model.get_eigenvalues(i)
-                        eigenvalues.append(list(eigs))
+                        eigenvalues.append(list(map(float, eigs)))
                     if record_s2:
-                        s2.append(mps_model.renyi2_entropy(i))
+                        s2.append(float(mps_model.renyi2_entropy(i)))
                 for __ in range(nstep):
                 
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
@@ -335,9 +335,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             max_bond_dim.append(mps_model.max_bond_dim)
             if compute_overlaps:
                 mu, sig, convergence_acheived = estimate_overlap(mps_model, spinconfig_all, rotations_all, eps=1e-2, Nsample=10)
-                overlap.append(mu)
-                overlap_err.append(sig)
-                overlap_converged.append(convergence_acheived)
+                overlap.append(float(mu))
+                overlap_err.append(float(sig))
+                overlap_converged.append(float(convergence_acheived))
 
             if val_ds is not None:
                 val_loss.append(compute_NLL(val_ds, mps_model))
