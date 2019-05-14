@@ -299,7 +299,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 if i == L//2 - 1:
                     if record_eigs:
                         eigs = mps_model.get_eigenvalues(i)
-                        eigenvalues.append(eigs)
+                        eigenvalues.append(list(eigs))
                     if record_s2:
                         s2.append(mps_model.renyi2_entropy(i))
                 for __ in range(nstep):
@@ -327,7 +327,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
         with torch.no_grad():
             #record batched loss functions
-            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).numpy())
+            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).item())
             if ground_truth_mps is not None:
                 fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
             if ground_truth_qutip is not None:
