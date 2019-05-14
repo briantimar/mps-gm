@@ -207,7 +207,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             ground_truth_mps = None, ground_truth_qutip = None,
                              verbose=False, use_cache=True, 
                             record_eigs=True, record_s2=True, early_stopping=True, 
-                            compute_overlaps=True, spinconfig_all=None, rotations_all=None):
+                            compute_overlaps=True, spinconfig_all=None, rotations_all=None, 
+                            samples_per_epoch=1):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -270,6 +271,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #val score must decrease by at least this fraction to count as improvement.
     REL_VAL_EARLY_STOP=1e-3
 
+    sample_step = len(dataloader) // samples_per_epoch
     for ep in range(epochs):
         t0=time.time()
         #load lr, s2 penalty, and max sv's for the epoch
@@ -324,29 +326,30 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                                      max_sv_to_keep=max_sv,
                                     learning_rate=lr, s2_penalty=_s2_penalty, use_cache=use_cache)
 
-
-        with torch.no_grad():
-            #record batched loss functions
-            losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).item())
-            if ground_truth_mps is not None:
-                fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
-            if ground_truth_qutip is not None:
-                fidelities_qutip.append( qt.fidelity(ground_truth_qutip, mps_model.to_qutip_ket()))
-            max_bond_dim.append(mps_model.max_bond_dim)
-            if compute_overlaps:
-                mu, sig, convergence_acheived = estimate_overlap(mps_model, spinconfig_all, rotations_all, eps=1e-2, Nsample=10)
-                overlap.append(float(mu))
-                overlap_err.append(float(sig))
-                overlap_converged.append(float(convergence_acheived))
-
-            if val_ds is not None:
-                val_loss.append(compute_NLL(val_ds, mps_model))
-                if early_stopping and ep>NUM_EP_EARLY_STOP:
-                    rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-5:]
-                    if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
-                        if verbose:
-                            print("Val score not decreasing, halting training")
-                        break
+            #record all desired training signals
+            if step % sample_step == 0:
+                with torch.no_grad():
+                    #record batched loss functions
+                    losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).item())
+                    if ground_truth_mps is not None:
+                        fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
+                    if ground_truth_qutip is not None:
+                        fidelities_qutip.append( qt.fidelity(ground_truth_qutip, mps_model.to_qutip_ket()))
+                    max_bond_dim.append(mps_model.max_bond_dim)
+                    if compute_overlaps:
+                        mu, sig, convergence_acheived = estimate_overlap(mps_model, spinconfig_all, rotations_all, eps=1e-2, Nsample=10)
+                        overlap.append(float(mu))
+                        overlap_err.append(float(sig))
+                        overlap_converged.append(float(convergence_acheived))
+                    #the val score is checked only every epoch
+                    if (val_ds is not None) and step == 0:
+                        val_loss.append(compute_NLL(val_ds, mps_model))
+                        if early_stopping and ep>NUM_EP_EARLY_STOP:
+                            rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-5:]
+                            if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
+                                if verbose:
+                                    print("Val score not decreasing, halting training")
+                                break
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
@@ -383,7 +386,7 @@ def train_from_dataset(meas_ds,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
-                compute_overlaps=True):
+                compute_overlaps=True, samples_per_epoch=1):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -411,7 +414,8 @@ def train_from_dataset(meas_ds,
                                     ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip,
                                     record_eigs=record_eigs, record_s2=record_s2,
                                     early_stopping=early_stopping,verbose=verbose,
-                                   compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all)
+                                   compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
+                                   samples_per_epoch=samples_per_epoch)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -580,7 +584,7 @@ def select_hyperparams_and_train(ds,
                             max_sv_to_keep = None,
                             ground_truth_mps=None, ground_truth_qutip=None, use_cache=True,val_seeds=None, seed=None, 
                             record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
-                           compute_overlaps=True):
+                           compute_overlaps=True, samples_per_epoch=1):
     """ Select hyperparams using single validation split, then train on full dataset.
         Returns: trained model, logdict, best params, trloss from val, valloss from val"""
     N = len(ds)
@@ -607,7 +611,8 @@ def select_hyperparams_and_train(ds,
                                         cutoff=cutoff,max_sv_to_keep=max_sv_to_keep,
                                         ground_truth_mps=ground_truth_mps,ground_truth_qutip=ground_truth_qutip,
                                         use_cache=use_cache,seed=seed,record_eigs=record_eigs,
-                                        record_s2=record_s2,verbose=verbose,compute_overlaps=compute_overlaps)
+                                        record_s2=record_s2,verbose=verbose,compute_overlaps=compute_overlaps,
+                                        samples_per_epoch=samples_per_epoch)
     return model, logdict, params, trloss, valloss
 
 
@@ -713,6 +718,7 @@ def train_from_filepath(fname_outcomes, fname_angles,
                                     N=None,seed=None,
                                     record_eigs=False, record_s2=True,
                                     compute_overlaps=True, use_cache=True,
+                                    samples_per_epoch=1,
                                     verbose=True):
     """ Train mps on given dataset.
         fname_outcomes: file path to numpy array holding measurement outcomes.
@@ -777,7 +783,8 @@ def train_from_filepath(fname_outcomes, fname_angles,
                     seed=seed,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
-                        use_cache=use_cache)
+                        use_cache=use_cache,
+                        samples_per_epoch=samples_per_epoch)
                         
     learning_rate = make_exp_schedule(lr_scale, lr_timescale)
     s2_penalty = make_exp_schedule(s2_scale, s2_timescale)
@@ -790,7 +797,8 @@ def train_from_filepath(fname_outcomes, fname_angles,
                             ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip, 
                             use_cache=use_cache, seed=seed, 
                             record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
-                            compute_overlaps=compute_overlaps)
+                            compute_overlaps=compute_overlaps,
+                            samples_per_epoch=samples_per_epoch)
     
 
     print("Finished training")
