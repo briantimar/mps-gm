@@ -299,11 +299,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
             for i in range(L-1):
                 if i == L//2 - 1:
-                    if record_eigs:
-                        eigs = mps_model.get_eigenvalues(i)
-                        eigenvalues.append(list(map(float, eigs)))
-                    if record_s2:
-                        s2.append(float(mps_model.renyi2_entropy(i)))
+                    if step % sample_step == 0:
+                        if record_eigs:
+                            eigs = mps_model.get_eigenvalues(i)
+                            eigenvalues.append(list(map(float, eigs)))
+                        if record_s2:
+                            s2.append(float(mps_model.renyi2_entropy(i)))
                 for __ in range(nstep):
                 
                     #computes merged two-site tensor at bond i, and the gradient of NLL cost function
