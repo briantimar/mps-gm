@@ -208,7 +208,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                              verbose=False, use_cache=True, 
                             record_eigs=True, record_s2=True, early_stopping=True, 
                             compute_overlaps=True, spinconfig_all=None, rotations_all=None, 
-                            samples_per_epoch=1):
+                            samples_per_epoch=1, 
+                            shake_cutoff=True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -231,6 +232,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         early_stopping: if True, halt training when val loss fails to decrease by more than 1e-3 in 5 epochs.
         compute_overlaps: whether to compute overlap estimates onto the target state.
             if true: spinconfig_all, rotations_all are used to compute the overlap estimates.
+        Shake_cutoff: if true, SVD cutoff is raised and lowered during early stages of training before being reduced to spec'd value.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -271,6 +273,21 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #val score must decrease by at least this fraction to count as improvement.
     REL_VAL_EARLY_STOP=1e-3
 
+    #how many epochs to use for cutoff shaking
+    SHAKE_EPOCHS = 1
+    #largest cutoff value to reach during shaking
+    CUTOFF_MAX = 1e-1
+    #period of the cutoff shaking -- number of sweeps (ie batches)
+    CUTOFF_PERIOD = 6
+    # cutoff schedule during shaking epochs
+    def get_shaken_cutoff(step):
+        step = step % CUTOFF_PERIOD
+        turnaround_step = CUTOFF_PERIOD //2
+        if step < turnaround_step:
+            return cutoff + step * (CUTOFF_MAX - cutoff) / (turnaround_step)
+        else: 
+            return CUTOFF_MAX + (step - turnaround_step) * (cutoff - CUTOFF_MAX) / (CUTOFF_PERIOD - turnaround_step)
+
     sample_step = len(dataloader) // samples_per_epoch
     for ep in range(epochs):
         t0=time.time()
@@ -294,6 +311,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
+            if epochs < SHAKE_EPOCHS:
+                sweep_cutoff = get_shaken_cutoff(step)
+            else:
+                sweep_cutoff = cutoff
+
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -311,7 +333,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     # with respect to this 'blob'; updates merged tensor accordingly, then breaks back to local tensors
                    
                     mps_model.do_sgd_step(i, spinconfig,
-                                    rotation=rotations, cutoff=cutoff, direction='right',
+                                    rotation=rotations, cutoff=sweep_cutoff, direction='right',
                                     max_sv_to_keep=max_sv,
                                     learning_rate=lr, s2_penalty=_s2_penalty,use_cache=use_cache)
                 
@@ -323,7 +345,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             for i in range(L-3, 0, -1):
                 for __ in range(nstep):
                     mps_model.do_sgd_step(i, spinconfig,
-                                    rotation=rotations, cutoff=cutoff, direction='left',
+                                    rotation=rotations, cutoff=sweep_cutoff, direction='left',
                                      max_sv_to_keep=max_sv,
                                     learning_rate=lr, s2_penalty=_s2_penalty, use_cache=use_cache)
 
@@ -387,7 +409,8 @@ def train_from_dataset(meas_ds,
                  max_sv_to_keep = None,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
-                compute_overlaps=True, samples_per_epoch=1):
+                compute_overlaps=True, samples_per_epoch=1, 
+                shake_cutoff=True):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -416,7 +439,8 @@ def train_from_dataset(meas_ds,
                                     record_eigs=record_eigs, record_s2=record_s2,
                                     early_stopping=early_stopping,verbose=verbose,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
-                                   samples_per_epoch=samples_per_epoch)
+                                   samples_per_epoch=samples_per_epoch,
+                                   shake_cutoff=shake_cutoff)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -713,6 +737,85 @@ def to_json(d):
         if isinstance(v, np.ndarray):
             d[k] = list(v)
 
+def train_from_dict(fname_outcomes, fname_angles, training_metadata, 
+                                    numpy_seed=0, 
+                                    N=None,seed=None,
+                                    record_eigs=False, record_s2=True,
+                                    compute_overlaps=True, use_cache=True,
+                                    samples_per_epoch=1,
+                                    verbose=True ):
+    """ Train MPS on the given (outcomes, angles) dataset with settings provided by a dictionary."""
+    #load a measurement dataset from the spec'd numpy files
+    ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
+    L=ds[0]['samples'].size(0)
+        
+    #training hyperparameters
+    lr_scale = training_metadata['lr_scale']
+    lr_timescale = training_metadata['lr_timescale']
+    s2_scale = training_metadata['s2_scale']
+    s2_timescale = training_metadata['s2_timescale']
+    epochs = training_metadata['epochs']
+    cutoff = training_metadata['cutoff']
+    max_sv= training_metadata['max_sv']
+    batch_size = training_metadata['batch_size']
+    shake_cutoff = training_metadata.get('shake_cutoff', True)
+
+    if verbose:
+        print("Loaded the following settings:")
+        for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
+            print("{0} = {1:3e}".format(setting, training_metadata[setting]))
+
+    #other settings for training...
+    ground_truth_mps_path = training_metadata.get('mps_path', None)
+    ground_truth_qutip_path = training_metadata.get('qutip_path', None)
+
+    if ground_truth_mps_path is not None:
+        print("loading ground truth MPS from ", ground_truth_mps_path)
+        from .models import MPS
+        ground_truth_mps = MPS(L, 2, 2)
+        ground_truth_mps.load(ground_truth_mps_path)
+    else:
+        ground_truth_mps = None
+
+    if ground_truth_qutip_path is not None:
+        print("Loading ground truth qutip state from ", ground_truth_qutip_path)
+        import qutip as qt
+        ground_truth_qutip = qt.qload(ground_truth_qutip_path)
+    else:
+        ground_truth_qutip = None
+
+    metadata = dict(fname_outcomes=fname_outcomes, fname_angles=fname_angles, 
+                    ground_truth_mps_path=ground_truth_mps_path,
+                    ground_truth_qutip_path=ground_truth_qutip_path,
+                    lr_scale=lr_scale, lr_timescale=lr_timescale, 
+                    s2_scale=s2_scale, s2_timescale=s2_timescale,
+                    Ntotal=N,
+                    seed=seed,
+                    shake_cutoff=shake_cutoff,
+                    epochs=epochs,cutoff=cutoff,
+                        max_sv=max_sv, batch_size=batch_size,
+                        use_cache=use_cache,
+                        samples_per_epoch=samples_per_epoch)
+                        
+    learning_rate = make_exp_schedule(lr_scale, lr_timescale)
+    s2_penalty = make_exp_schedule(s2_scale, s2_timescale)
+
+    model, logdict = train_from_dataset(ds,
+                            learning_rate, batch_size, epochs,
+                            val_ds=None,
+                            s2_penalty=s2_penalty, cutoff=cutoff,
+                            max_sv_to_keep=max_sv,
+                            ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip, 
+                            use_cache=use_cache, seed=seed, 
+                            record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
+                            compute_overlaps=compute_overlaps,
+                            samples_per_epoch=samples_per_epoch, 
+                            shake_cutoff=shake_cutoff)
+    
+    if verbose:
+        print("Finished training")
+    return model, logdict, metadata
+
 def train_from_filepath(fname_outcomes, fname_angles, 
                                     fname_training_metadata,
                                     numpy_seed=0, 
@@ -733,77 +836,18 @@ def train_from_filepath(fname_outcomes, fname_angles,
         lr_scale, s2_scale: the 'A' coefficient for learning rate and S2 penalty respectively
         lr_timescale, s2_timescale: the 'timescale' coefficient for learning rate and S2 penalty """
 
-    #load a measurement dataset from the spec'd numpy files
-    ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
-    L=ds[0]['samples'].size(0)
-
+   
     #load training hyperparams from json
     print("Loading training settings from", fname_training_metadata)
     with open(fname_training_metadata) as f:
         training_metadata = json.load(f)
 
-    #training hyperparameters
-    lr_scale = training_metadata['lr_scale']
-    lr_timescale = training_metadata['lr_timescale']
-    s2_scale = training_metadata['s2_scale']
-    s2_timescale = training_metadata['s2_timescale']
-    epochs = training_metadata['epochs']
-    cutoff = training_metadata['cutoff']
-    max_sv= training_metadata['max_sv']
-    batch_size = training_metadata['batch_size']
-
-    if verbose:
-        print("Loaded the following settings:")
-        for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
-            print("{0} = {1:3e}".format(setting, training_metadata[setting]))
-
-    #other settings for training...
-    ground_truth_mps_path = training_metadata.get('mps_path', None)
-    ground_truth_qutip_path = training_metadata.get('qutip_path', None)
-
-    if ground_truth_mps_path is not None:
-        print("loading ground truth MPS from ", ground_truth_mps_path)
-        from .models import MPS
-        ground_truth_mps = MPS(L, 2, 2)
-        ground_truth_mps.load(ground_truth_mps_path)
-    else:
-        ground_truth_mps = None
-    if ground_truth_qutip_path is not None:
-        print("Loading ground truth qutip state from ", ground_truth_qutip_path)
-        import qutip as qt
-        ground_truth_qutip = qt.qload(ground_truth_qutip_path)
-    else:
-        ground_truth_qutip = None
-
-    metadata = dict(fname_outcomes=fname_outcomes, fname_angles=fname_angles, 
-                    ground_truth_mps_path=ground_truth_mps_path,
-                    ground_truth_qutip_path=ground_truth_qutip_path,
-                    lr_scale=lr_scale, lr_timescale=lr_timescale, 
-                    s2_scale=s2_scale, s2_timescale=s2_timescale,
-                    Ntotal=N,
-                    seed=seed,
-                    epochs=epochs,cutoff=cutoff,
-                        max_sv=max_sv, batch_size=batch_size,
-                        use_cache=use_cache,
-                        samples_per_epoch=samples_per_epoch)
-                        
-    learning_rate = make_exp_schedule(lr_scale, lr_timescale)
-    s2_penalty = make_exp_schedule(s2_scale, s2_timescale)
-
-    model, logdict = train_from_dataset(ds,
-                            learning_rate, batch_size, epochs,
-                            val_ds=None,
-                            s2_penalty=s2_penalty, cutoff=cutoff,
-                            max_sv_to_keep=max_sv,
-                            ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip, 
-                            use_cache=use_cache, seed=seed, 
-                            record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
-                            compute_overlaps=compute_overlaps,
-                            samples_per_epoch=samples_per_epoch)
-    
-
-    print("Finished training")
-    return model, logdict, metadata
+    return train_from_dict(fname_outcomes, fname_angles, training_metadata, 
+                                    numpy_seed=numpy_seed, seed=seed,N=N,
+                                    record_eigs=record_eigs, record_s2=record_s2,
+                                    compute_overlaps=compute_overlaps, use_cache=use_cache,
+                                    samples_per_epoch=samples_per_epoch,
+                                    verbose=verbose)
 
 def hamming_distance(s1, s2):
     """ The Hamming distance between two (N, L) spin configurations."""
