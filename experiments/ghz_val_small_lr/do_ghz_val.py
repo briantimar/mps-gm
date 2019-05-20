@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 import torch
+import json
 
 DEPTH=2
 DIR = os.path.dirname(os.path.abspath(__file__)).split('/')
@@ -19,7 +20,7 @@ torch.manual_seed(12)
 #system size
 L=4
 #max epochs of training
-epochs = 500
+epochs = 1000
 #svd cutoff 
 cutoff = 1e-3
 # max bond dimension
@@ -78,3 +79,12 @@ print("Finished hyperparam selection")
 np.save(os.path.join('data', 'validated_params'), params)
 np.save(os.path.join('data', 'trlosses'), trlosses)
 np.save(os.path.join('data', 'vallosses'), vallosses)
+
+
+training_settings = dict(epochs=len(trlosses),
+                        cutoff=cutoff,max_sv=max_sv, batch_size=batch_size,
+                        early_stopping=early_stopping, hold_early_cutoff=hold_early_cutoff,
+                        lr_scale = params['lr_scale'], lr_timescale=params['lr_timescale'],
+                        s2_scale = params['s2_scale'], s2_timescale=params['s2_timescale'])
+with open(os.path.join('data', 'training_settings.json'), 'w') as f:
+    json.dump(training_settings, f)

@@ -1,0 +1,1 @@
+{"epochs": 34, "cutoff": 0.001, "max_sv": 25, "batch_size": 256, "early_stopping": true, "hold_early_cutoff": true, "lr_scale": 0.0008702652783677074, "lr_timescale": 7831.61409959352, "s2_scale": 0.00016404438213234984, "s2_timescale": 427.20793135377744}
