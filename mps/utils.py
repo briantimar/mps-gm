@@ -273,8 +273,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #val score must decrease by at least this fraction to count as improvement.
     REL_VAL_EARLY_STOP=1e-3
 
+    #only enforced if early stopping -- training will not halt below this value
+    MIN_EPOCHS = 20
     #how many epochs to use for cutoff shaking
-    HOLD_EPOCHS = epochs//4
+    HOLD_EPOCHS = 10
     #largest cutoff value to reach during shaking
     CUTOFF_MAX = 1e-1
     #period of the cutoff shaking -- number of sweeps (ie batches)
@@ -376,7 +378,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                     #the val score is checked only every epoch
                     if (val_ds is not None) and step == 0:
                         val_loss.append(compute_NLL(val_ds, mps_model))
-                        if early_stopping and ep>NUM_EP_EARLY_STOP:
+                        if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
                             rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-5:]
                             if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
                                 if verbose:
@@ -506,13 +508,16 @@ def do_validation(train_ds, val_ds,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
                  early_stopping=True,
-                 verbose=False):
+                 verbose=False,
+                 hold_early_cutoff=True):
     """ Validate a set of parameters on held-out dataset.   
         params: list of dicts holding hyperparams. Each must have keys:
             'learning_rate'
             's2_penalty'
         seed: if not None, int, or list of ints. In the latter case, scores will be averaged over seeds.
         Returns: val scores (Nparam),  training losses , val losses. """
+    import traceback 
+
     Nparam = len(params)
     trlosses = []
     vallosses = []
@@ -545,14 +550,15 @@ def do_validation(train_ds, val_ds,
                                         val_ds = val_ds,
                                         s2_penalty=s2_penalty, cutoff=cutoff, max_sv_to_keep=max_sv_to_keep, 
                                         use_cache=use_cache, seed=seed, early_stopping=early_stopping, verbose=False,
-                                        compute_overlaps=False)
+                                        compute_overlaps=False, hold_early_cutoff=hold_early_cutoff)
                 _trloss = logdict['loss']
                 _valloss = logdict['val_loss']
                 _score = _valloss[-1]
                 
             except Exception as e:
                 print("Training failed:")
-                print(e)
+                print(traceback.format_exc())
+                                
                 _score = np.inf
             _scores.append(_score)
         score = np.mean(_scores)
@@ -572,6 +578,7 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                  max_sv_to_keep = None,
                  use_cache=True, seed=None, 
                  early_stopping=True,
+                 hold_early_cutoff=True,
                  verbose=False
                  ):
     """ Obtain hyperparams by validation.
@@ -602,7 +609,7 @@ def select_hyperparams(train_ds, val_ds, batch_size, epochs,
                             max_sv_to_keep=max_sv_to_keep,
                             use_cache=use_cache, seed=seed, 
                             early_stopping=early_stopping,
-                            verbose=verbose)
+                            verbose=verbose, hold_early_cutoff=hold_early_cutoff)
     best_index = np.argmin(scores)
     best_params = dict(lr_scale=lr_scale[best_index],
                         lr_timescale=lr_timescale[best_index],
