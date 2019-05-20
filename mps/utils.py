@@ -209,7 +209,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             record_eigs=True, record_s2=True, early_stopping=True, 
                             compute_overlaps=True, spinconfig_all=None, rotations_all=None, 
                             samples_per_epoch=1, 
-                            shake_cutoff=True):
+                            hold_early_cutoff=True):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -232,7 +232,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         early_stopping: if True, halt training when val loss fails to decrease by more than 1e-3 in 5 epochs.
         compute_overlaps: whether to compute overlap estimates onto the target state.
             if true: spinconfig_all, rotations_all are used to compute the overlap estimates.
-        Shake_cutoff: if true, SVD cutoff is raised and lowered during early stages of training before being reduced to spec'd value.
+        hold_early_cutoff: if true, SVD cutoff is kept large at beginiing of training.
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -274,12 +274,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     REL_VAL_EARLY_STOP=1e-3
 
     #how many epochs to use for cutoff shaking
-    SHAKE_EPOCHS = 3
+    HOLD_EPOCHS = epochs//4
     #largest cutoff value to reach during shaking
     CUTOFF_MAX = 1e-1
     #period of the cutoff shaking -- number of sweeps (ie batches)
     CUTOFF_PERIOD = 6
-    # cutoff schedule during shaking epochs
+
     def get_shaken_cutoff(step):
         step = step % CUTOFF_PERIOD
         turnaround_step = CUTOFF_PERIOD //2
@@ -287,6 +287,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             return CUTOFF_MAX + step * (cutoff - CUTOFF_MAX) / (turnaround_step)
         else: 
             return cutoff + (step - turnaround_step) * (CUTOFF_MAX-cutoff) / (CUTOFF_PERIOD - turnaround_step)
+    
+    # cutoff schedule during shaking epochs
+    def get_early_cutoff(step):
+        return CUTOFF_MAX
 
     def get_decaying_cutoff(step):
         return CUTOFF_MAX + (cutoff - CUTOFF_MAX) * (step) / (len(dataloader)-1)
@@ -314,9 +318,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
-            if ep < SHAKE_EPOCHS:
-                sweep_cutoff = get_shaken_cutoff(step)
-            elif ep == SHAKE_EPOCHS:
+            if ep < HOLD_EPOCHS:
+                sweep_cutoff = get_early_cutoff(step)
+            elif ep == HOLD_EPOCHS:
                 sweep_cutoff = get_decaying_cutoff(step)
             else:
                 sweep_cutoff = cutoff
@@ -415,7 +419,7 @@ def train_from_dataset(meas_ds,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
                 compute_overlaps=True, samples_per_epoch=1, 
-                shake_cutoff=True):
+                hold_early_cutoff=True):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -445,7 +449,7 @@ def train_from_dataset(meas_ds,
                                     early_stopping=early_stopping,verbose=verbose,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
                                    samples_per_epoch=samples_per_epoch,
-                                   shake_cutoff=shake_cutoff)
+                                   hold_early_cutoff=hold_early_cutoff)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -763,13 +767,13 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     cutoff = training_metadata['cutoff']
     max_sv= training_metadata['max_sv']
     batch_size = training_metadata['batch_size']
-    shake_cutoff = training_metadata.get('shake_cutoff', True)
+    hold_early_cutoff = training_metadata.get('hold_early_cutoff', True)
 
     if verbose:
         print("Loaded the following settings:")
         for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
-        print("Shake cutoff: {0}".format(shake_cutoff))
+        print("Hold early cutoff: {0}".format(hold_early_cutoff))
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)
@@ -797,7 +801,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     s2_scale=s2_scale, s2_timescale=s2_timescale,
                     Ntotal=N,
                     seed=seed,
-                    shake_cutoff=shake_cutoff,
+                    hold_early_cutoff=hold_early_cutoff,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
                         use_cache=use_cache,
@@ -816,7 +820,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                             record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
                             compute_overlaps=compute_overlaps,
                             samples_per_epoch=samples_per_epoch, 
-                            shake_cutoff=shake_cutoff)
+                            hold_early_cutoff=hold_early_cutoff)
     
     if verbose:
         print("Finished training")
