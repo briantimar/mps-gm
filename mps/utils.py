@@ -375,15 +375,14 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                         overlap.append(float(mu))
                         overlap_err.append(float(sig))
                         overlap_converged.append(float(convergence_acheived))
-                    #the val score is checked only every epoch
-                    if (val_ds is not None) and step == 0:
-                        val_loss.append(compute_NLL(val_ds, mps_model))
-                        if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
-                            rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-5:]
-                            if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
-                                if verbose:
-                                    print("Val score not decreasing, halting training")
-                                break
+        #the val score is checked only every epoch
+        if (val_ds is not None) and step == 0:
+            val_loss.append(compute_NLL(val_ds, mps_model))
+            if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
+                rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP:]
+                if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
+                    print("Val score not decreasing, halting training")
+                    break
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
