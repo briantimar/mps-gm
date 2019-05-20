@@ -274,7 +274,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     REL_VAL_EARLY_STOP=1e-3
 
     #how many epochs to use for cutoff shaking
-    SHAKE_EPOCHS = 1
+    SHAKE_EPOCHS = 3
     #largest cutoff value to reach during shaking
     CUTOFF_MAX = 1e-1
     #period of the cutoff shaking -- number of sweeps (ie batches)
@@ -284,9 +284,12 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         step = step % CUTOFF_PERIOD
         turnaround_step = CUTOFF_PERIOD //2
         if step < turnaround_step:
-            return cutoff + step * (CUTOFF_MAX - cutoff) / (turnaround_step)
+            return CUTOFF_MAX + step * (cutoff - CUTOFF_MAX) / (turnaround_step)
         else: 
-            return CUTOFF_MAX + (step - turnaround_step) * (cutoff - CUTOFF_MAX) / (CUTOFF_PERIOD - turnaround_step)
+            return cutoff + (step - turnaround_step) * (CUTOFF_MAX-cutoff) / (CUTOFF_PERIOD - turnaround_step)
+
+    def get_decaying_cutoff(step):
+        return CUTOFF_MAX + (cutoff - CUTOFF_MAX) * (step) / (len(dataloader)-1)
 
     sample_step = len(dataloader) // samples_per_epoch
     for ep in range(epochs):
@@ -311,11 +314,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
-            if epochs < SHAKE_EPOCHS:
+            if ep < SHAKE_EPOCHS:
                 sweep_cutoff = get_shaken_cutoff(step)
+            elif ep == SHAKE_EPOCHS:
+                sweep_cutoff = get_decaying_cutoff(step)
             else:
                 sweep_cutoff = cutoff
-
+          
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -764,6 +769,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         print("Loaded the following settings:")
         for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
+        print("Shake cutoff: {0}".format(shake_cutoff))
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)

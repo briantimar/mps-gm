@@ -747,7 +747,8 @@ class MPS(nn.Module):
 
         self.set_local_tensor_from_numpy(site_index, Aleft)
         self.set_local_tensor_from_numpy(site_index+1, Aright)
-        self.gauge_to(site_index+1 if normalize=='left' else site_index)
+        self.gauge_to(site_index+1 if normalize=='left' else site_index, 
+                        cutoff=cutoff,max_sv_to_keep=max_sv_to_keep)
     
     def _init_leftward_cache(self, spin_config, rotation=None):
         """Update all caches for a leftward sweep."""
