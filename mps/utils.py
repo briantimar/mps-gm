@@ -376,7 +376,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                         overlap_err.append(float(sig))
                         overlap_converged.append(float(convergence_acheived))
         #the val score is checked only every epoch
-        if (val_ds is not None) and step == 0:
+        if (val_ds is not None):
             val_loss.append(compute_NLL(val_ds, mps_model))
             if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
                 rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP:]
