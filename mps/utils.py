@@ -692,9 +692,10 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
                                     lr_scale, lr_timescale, s2_scale, s2_timescale,
                                 numpy_seed=0, 
                                 N=None, val_split=.2, 
-                                Nparam=50, nseed=1, 
+                                nseed=1, 
                                 epochs=500, cutoff=1e-5, max_sv=25, batch_size=1024, 
-                                use_cache=True, early_stopping=True, verbose=True):
+                                use_cache=True, early_stopping=True,
+                                hold_early_cutoff=True, verbose=True):
     """ Select hyperparams by training on the given datasets. 
         fname_outcomes: file path to numpy array holding measurement outcomes.
         fname_angles: filepath to numpy array holding angles.
@@ -725,14 +726,16 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
                     Ntotal=N,val_split=val_split,Nparam=Nparam,
                     nseed=nseed,epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
-                        use_cache=use_cache,early_stopping=early_stopping)
+                        use_cache=use_cache,early_stopping=early_stopping,
+                        hold_early_cutoff=hold_early_cutoff)
 
 
     params, trlosses, vallosses = select_hyperparams(train_ds, val_ds, batch_size, epochs,
                                                         Nparam=Nparam,lr_scale=lr_scale, lr_timescale=lr_timescale,
                                                         s2_scale=s2_scale, s2_timescale=s2_timescale, cutoff=cutoff,
                                                         max_sv_to_keep=max_sv, use_cache=use_cache, seed=seeds,
-                                                        early_stopping=early_stopping, verbose=verbose)
+                                                        early_stopping=early_stopping,
+                                                        hold_early_cutoff=hold_early_cutoff, verbose=verbose)
     #record the number of epochs used in val params (will be less than specified in case of early stopping)
     params['epochs'] = len(trlosses)
     print("Finished hyperparam selection")
