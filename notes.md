@@ -101,3 +101,8 @@ Some important recent updates:
 Regarding the latter -- it seems the fundamental cause of large bond dims was a **large learning rate** during training. The reason is simple: the eigenvalue truncation happens just after the site tensor is updated according to the gradient. If the lr is large, this update produces a new twosite blob which seems generically to create entanglement. 
 
 During gradient-descent training without S2 regularization, one often finds that entropy of the half-chain state peaks at a large spurious value before starting to fall down. 
+
+## May 29
+Another note on bond dimensions: I tried implementing the 'shaking' scheme that Jun recommended. I didn't find any improvement in final bond dimension as a result: as cutoff was swept up and down, the bond dimension would track it, increasing and decreasing; however, when the cutoff was lowered to its final value, the bond dim would shoot back up again.
+
+the best method I've found so far is to hold the cutoff to be very loose for the first few epochs of training, then slowly pull it down to the specified value. The lr should also be kept small (<~ 1e-3 in the tests I've performed).
