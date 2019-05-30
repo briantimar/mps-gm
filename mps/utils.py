@@ -286,9 +286,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
     ## Wait-for-plateau settings
     #window size for rolling average training cost (epochs)
-    WINDOW = 5
+    WINDOW = 10
     # train as long as cost function maintains this relative decrease
-    # REL_TR_DECREASE=1e-3
+    REL_TR_DECREASE=1e-3
 
     ## Early stopping settings
     #how many epochs must val score fail to improve before we stop?
@@ -421,7 +421,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             avg_tr_cost = rolling_avg(losses, window=WINDOW*samples_per_epoch)
             recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW*samples_per_epoch:]
             # I call it a plateau if smoothed loss is not decreasing
-            tr_plateau = not (recent_rel_cost[-1] <0)
+            tr_plateau = not (recent_rel_cost < 0).all()
             if ep >= epochs - 1 and (not tr_plateau) and verbose:
                 print("Training plateau not reached, continuing...")
 
@@ -917,7 +917,6 @@ def train_from_filepath(fname_outcomes, fname_angles,
                                     numpy_seed=numpy_seed, seed=seed,N=N,
                                     record_eigs=record_eigs, record_s2=record_s2,
                                     compute_overlaps=compute_overlaps, use_cache=use_cache,
-                                    samples_per_epoch=samples_per_epoch,
                                     verbose=verbose)
 
 def hamming_distance(s1, s2):
