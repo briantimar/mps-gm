@@ -295,6 +295,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         return CUTOFF_MAX
 
     def get_decaying_cutoff(step):
+        if len(dataloader)==1:
+            return cutoff
         return CUTOFF_MAX + (cutoff - CUTOFF_MAX) * (step) / (len(dataloader)-1)
 
     sample_step = len(dataloader) // samples_per_epoch
