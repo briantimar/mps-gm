@@ -288,7 +288,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #window size for rolling average training cost (epochs)
     WINDOW = 5
     # train as long as cost function maintains this relative decrease
-    REL_TR_DECREASE=1e-3
+    # REL_TR_DECREASE=1e-3
 
     ## Early stopping settings
     #how many epochs must val score fail to improve before we stop?
@@ -418,15 +418,15 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
         #check whether training set score is flat.
         if wait_for_plateau and ep > WINDOW:
-            losses_by_ep = losses[::samples_per_epoch]
-            avg_tr_cost = rolling_avg(losses_by_ep, window=WINDOW)
-            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW:]
-            tr_plateau = not (recent_rel_cost < - REL_TR_DECREASE).all()
+            avg_tr_cost = rolling_avg(losses, window=WINDOW*samples_per_epoch)
+            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW*samples_per_epoch:]
+            # I call it a plateau if smoothed loss is not decreasing
+            tr_plateau = not (recent_rel_cost[-1] <0)
             if ep >= epochs - 1 and (not tr_plateau) and verbose:
                 print("Training plateau not reached, continuing...")
 
         ep +=1 
-        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or tr_plateau
+        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or (tr_plateau and (ep >= epochs))
 
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
