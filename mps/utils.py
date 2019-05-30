@@ -419,8 +419,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         #check whether training set score is flat.
         if wait_for_plateau and ep > WINDOW:
             avg_tr_cost = rolling_avg(losses, window=WINDOW*samples_per_epoch)
-            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW*samples_per_epoch:]
-            # I call it a plateau if smoothed loss is not decreasing
+            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-samples_per_epoch:]
+            # I call it a plateau if smoothed loss has not consistently decreased during the previous epoch
             tr_plateau = not (recent_rel_cost < 0).all()
             if ep >= epochs - 1 and (not tr_plateau) and verbose:
                 print("Training plateau not reached, continuing...")
