@@ -199,7 +199,7 @@ def build_random_mps(L, bond_dim):
     from .models import MPS
     return MPS(L,local_dim=2,bond_dim=bond_dim)
 
-def rolling_avg(arr, step=5):
+def rolling_avg(arr, window=5):
     """ Compute the rolling average of a 1d array.
         Returns: array of same size as arr. Each element is the average of the previous <step> elements in arr"""
     sums = np.empty_like(arr)
@@ -221,7 +221,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             record_eigs=True, record_s2=True, early_stopping=True, 
                             compute_overlaps=True, spinconfig_all=None, rotations_all=None, 
                             samples_per_epoch=1, 
-                            hold_early_cutoff=True):
+                            hold_early_cutoff=True, 
+                            wait_for_plateau=False):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -245,6 +246,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         compute_overlaps: whether to compute overlap estimates onto the target state.
             if true: spinconfig_all, rotations_all are used to compute the overlap estimates.
         hold_early_cutoff: if true, SVD cutoff is kept large at beginiing of training.
+        wait_for_plateau: if true, training will not be stopped until rolling average of the batched cost function plateaus.
+
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
                     'fidelity' -> if ground truth state was provided, array of fidelties during training.
@@ -280,6 +283,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     overlap_err = []
     overlap_converged = []
 
+    ## Wait-for-plateau settings
+    #window size for rolling average training cost (epochs)
+    WINDOW = 5
+    # train as long as cost function maintains this relative decrease
+    REL_TR_DECREASE=1e-3
+
+    ## Early stopping settings
     #how many epochs must val score fail to improve before we stop?
     NUM_EP_EARLY_STOP=5
     #val score must decrease by at least this fraction to count as improvement.
@@ -312,7 +322,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         return CUTOFF_MAX + (cutoff - CUTOFF_MAX) * (step) / (len(dataloader)-1)
 
     sample_step = len(dataloader) // samples_per_epoch
-    for ep in range(epochs):
+    ep=0
+    training_finished=False
+    val_plateau=False
+    tr_plateau=False
+    while not training_finished:
         t0=time.time()
         #load lr, s2 penalty, and max sv's for the epoch
         try:
@@ -389,17 +403,29 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                         overlap.append(float(mu))
                         overlap_err.append(float(sig))
                         overlap_converged.append(float(convergence_acheived))
-        #the val score is checked only every epoch
+        
+        #check whether validation score is flat
         if (val_ds is not None):
             val_loss.append(compute_NLL(val_ds, mps_model))
             if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
                 rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP:]
                 if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
                     print("Val score not decreasing, halting training")
-                    break
+                    val_plateau = True
+
+        #check whether training set score is flat.
+        if wait_for_plateau and ep > WINDOW:
+            avg_tr_cost = rolling_avg(losses, window=WINDOW)
+            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW:]
+            tr_plateau = not (recent_rel_cost[-1] < - REL_TR_DECREASE)
+
+        ep +=1 
+        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or tr_plateau
+
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
             print("Model shape: ", mps_model.shape)
+        
         
     return dict(loss=(losses),
                 fidelity_mps=(fidelities_mps),
