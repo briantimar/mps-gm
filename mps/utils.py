@@ -205,10 +205,10 @@ def rolling_avg(arr, window=5):
     sums = np.empty_like(arr)
     cs = np.cumsum(arr)
     for i in range(len(arr)):
-        if i < step:
+        if i < window:
             sums[i] = cs[i]/(i+1)
         else:
-            sums[i] = (cs[i] - cs[i-step])/step
+            sums[i] = (cs[i] - cs[i-window])/window
     return sums
 
 def do_local_sgd_training(mps_model, dataloader, epochs, 
@@ -266,6 +266,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     L = mps_model.L
     #logging the loss function
     losses = []
+    losses_by_ep=[]
     #if ground-truth MPS is known, compute fidelity at each step
     fidelities_mps = []
     #same, for ground_truth qutip state
@@ -392,7 +393,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             if step % sample_step == 0:
                 with torch.no_grad():
                     #record batched loss functions
-                    losses.append(mps_model.nll_loss(spinconfig, rotation=rotations).item())
+                    batch_loss=(mps_model.nll_loss(spinconfig, rotation=rotations).item())
+                    losses.append(batch_loss)
+
                     if ground_truth_mps is not None:
                         fidelities_mps.append(np.abs(mps_model.overlap(ground_truth_mps)) / mps_model.norm_scalar() )
                     if ground_truth_qutip is not None:
@@ -415,9 +418,11 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
         #check whether training set score is flat.
         if wait_for_plateau and ep > WINDOW:
-            avg_tr_cost = rolling_avg(losses, window=WINDOW)
-            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW:]
+            avg_tr_cost = rolling_avg(losses, window=WINDOW* samples_per_epoch)
+            recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW * samples_per_epoch:]
             tr_plateau = not (recent_rel_cost[-1] < - REL_TR_DECREASE)
+            if ep >= epochs - 1 and (not tr_plateau) and verbose:
+                print("Training plateau not reached, continuing...")
 
         ep +=1 
         training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or tr_plateau
@@ -460,7 +465,7 @@ def train_from_dataset(meas_ds,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
                 compute_overlaps=True, samples_per_epoch=1, 
-                hold_early_cutoff=True):
+                hold_early_cutoff=True, wait_for_plateau=False):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -490,7 +495,8 @@ def train_from_dataset(meas_ds,
                                     early_stopping=early_stopping,verbose=verbose,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
                                    samples_per_epoch=samples_per_epoch,
-                                   hold_early_cutoff=hold_early_cutoff)
+                                   hold_early_cutoff=hold_early_cutoff, 
+                                   wait_for_plateau=wait_for_plateau)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -800,7 +806,6 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                                     N=None,seed=None,
                                     record_eigs=False, record_s2=True,
                                     compute_overlaps=True, use_cache=True,
-                                    samples_per_epoch=1,
                                     verbose=True ):
     """ Train MPS on the given (outcomes, angles) dataset with settings provided by a dictionary."""
     #load a measurement dataset from the spec'd numpy files
@@ -817,12 +822,16 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     max_sv= training_metadata['max_sv']
     batch_size = training_metadata['batch_size']
     hold_early_cutoff = training_metadata.get('hold_early_cutoff', True)
+    wait_for_plateau = training_metadata.get('wait_for_plateau', False)
+    samples_per_epoch = training_metadata.get('samples_per_epoch', 1)
 
     if verbose:
         print("Loaded the following settings:")
         for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
         print("Hold early cutoff: {0}".format(hold_early_cutoff))
+        print("Wait for plateau:", wait_for_plateau)
+        print('Samples per epoch:', samples_per_epoch)
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)
@@ -851,6 +860,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     Ntotal=N,
                     seed=seed,
                     hold_early_cutoff=hold_early_cutoff,
+                    wait_for_plateau=wait_for_plateau,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
                         use_cache=use_cache,
@@ -869,7 +879,8 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                             record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
                             compute_overlaps=compute_overlaps,
                             samples_per_epoch=samples_per_epoch, 
-                            hold_early_cutoff=hold_early_cutoff)
+                            hold_early_cutoff=hold_early_cutoff,
+                            wait_for_plateau=wait_for_plateau)
     
     if verbose:
         print("Finished training")
