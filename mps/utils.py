@@ -199,6 +199,18 @@ def build_random_mps(L, bond_dim):
     from .models import MPS
     return MPS(L,local_dim=2,bond_dim=bond_dim)
 
+def rolling_avg(arr, step=5):
+    """ Compute the rolling average of a 1d array.
+        Returns: array of same size as arr. Each element is the average of the previous <step> elements in arr"""
+    sums = np.empty_like(arr)
+    cs = np.cumsum(arr)
+    for i in range(len(arr)):
+        if i < step:
+            sums[i] = cs[i]/(i+1)
+        else:
+            sums[i] = (cs[i] - cs[i-step])/step
+    return sums
+
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, 
                             val_ds = None, 
