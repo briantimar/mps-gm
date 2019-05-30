@@ -305,6 +305,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #period of the cutoff shaking -- number of sweeps (ie batches)
     CUTOFF_PERIOD = 6
 
+    MAX_EPS =500
+
     def get_shaken_cutoff(step):
         step = step % CUTOFF_PERIOD
         turnaround_step = CUTOFF_PERIOD //2
@@ -327,6 +329,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     training_finished=False
     val_plateau=False
     tr_plateau=False
+
+    if len(dataloader) ==1:
+        wait_for_plateau = False
+
     while not training_finished:
         t0=time.time()
         #load lr, s2 penalty, and max sv's for the epoch
@@ -426,7 +432,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 print("Training plateau not reached, continuing...")
 
         ep +=1 
-        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or (tr_plateau and (ep >= epochs))
+        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or (tr_plateau and (ep >= epochs)) or (ep >= MAX_EPS)
 
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
