@@ -211,6 +211,18 @@ def rolling_avg(arr, window=5):
             sums[i] = (cs[i] - cs[i-window])/window
     return sums
 
+def split_dataset(ds, val_fraction=.2):
+    """ Split the dataset provided into training and validation sets.
+        ds= a MeasurementDataset
+        val_fraction= fraction of the data to put in val set. 
+        Returns: training dataset, val dataset.
+        Split is torch-random."""
+    N = len(ds)
+    Nval = int(val_fraction * N)
+    from torch.utils.data import random_split
+    train_ds, val_ds = random_split(ds,[N-Nval,Nval])
+    return train_ds, val_ds
+
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, 
                             val_ds = None, 
@@ -680,10 +692,8 @@ def select_hyperparams_and_train(ds,
                            compute_overlaps=True, samples_per_epoch=1):
     """ Select hyperparams using single validation split, then train on full dataset.
         Returns: trained model, logdict, best params, trloss from val, valloss from val"""
-    N = len(ds)
-    Nval = int(val_split * N)
-    from torch.utils.data import random_split
-    train_ds, val_ds = random_split(ds,[N-Nval,Nval])
+    
+    train_ds, val_ds = split_dataset(ds,val_fraction=val_split)
 
     params, trloss, valloss = select_hyperparams(train_ds, val_ds, batch_size, epochs,
                                                 Nparam=Nparam, 
@@ -763,10 +773,8 @@ def select_hyperparams_from_filepath(fname_outcomes, fname_angles, output_dir,
 
 
     ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
-    N=len(ds)
-    Nval = int(val_split * N)
-    Ntr = N - Nval
-    train_ds, val_ds = random_split(ds, [Ntr, Nval])
+    
+    train_ds, val_ds = split_dataset(ds, val_fraction=val_split)
 
     Nparam = len(lr_scale)
     for param_array in (lr_timescale, s2_scale, s2_timescale):
@@ -811,6 +819,7 @@ def to_json(d):
 def train_from_dict(fname_outcomes, fname_angles, training_metadata, 
                                     numpy_seed=0, 
                                     N=None,seed=None,
+                                    val_fraction=None,
                                     record_eigs=False, record_s2=True,
                                     compute_overlaps=True, use_cache=True,
                                     verbose=True ):
@@ -819,6 +828,12 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
     L=ds[0]['samples'].size(0)
         
+    if val_fraction is not None:
+        train_ds, val_ds = split_dataset(ds, val_fraction=val_fraction)
+    else:
+        train_ds = ds
+        val_ds = None
+
     #training hyperparameters
     lr_scale = training_metadata['lr_scale']
     lr_timescale = training_metadata['lr_timescale']
@@ -839,6 +854,8 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         print("Hold early cutoff: {0}".format(hold_early_cutoff))
         print("Wait for plateau:", wait_for_plateau)
         print('Samples per epoch:', samples_per_epoch)
+        if val_fraction is not None:
+            print("Val fraction:", val_fraction)
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)
@@ -866,6 +883,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     s2_scale=s2_scale, s2_timescale=s2_timescale,
                     Ntotal=N,
                     seed=seed,
+                    val_fraction=val_fraction,
                     hold_early_cutoff=hold_early_cutoff,
                     wait_for_plateau=wait_for_plateau,
                     epochs=epochs,cutoff=cutoff,
@@ -876,9 +894,9 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     learning_rate = make_exp_schedule(lr_scale, lr_timescale)
     s2_penalty = make_exp_schedule(s2_scale, s2_timescale)
 
-    model, logdict = train_from_dataset(ds,
+    model, logdict = train_from_dataset(train_ds,
                             learning_rate, batch_size, epochs,
-                            val_ds=None,
+                            val_ds=val_ds,
                             s2_penalty=s2_penalty, cutoff=cutoff,
                             max_sv_to_keep=max_sv,
                             ground_truth_mps=ground_truth_mps, ground_truth_qutip=ground_truth_qutip, 
