@@ -846,6 +846,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     hold_early_cutoff = training_metadata.get('hold_early_cutoff', True)
     wait_for_plateau = training_metadata.get('wait_for_plateau', False)
     samples_per_epoch = training_metadata.get('samples_per_epoch', 1)
+    early_stopping = training_metadata.get('early_stopping', False)
 
     if verbose:
         print("Loaded the following settings:")
@@ -856,6 +857,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         print('Samples per epoch:', samples_per_epoch)
         if val_fraction is not None:
             print("Val fraction:", val_fraction)
+            print("Early stopping:", early_stopping)
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)
@@ -886,6 +888,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     val_fraction=val_fraction,
                     hold_early_cutoff=hold_early_cutoff,
                     wait_for_plateau=wait_for_plateau,
+                    early_stopping=early_stopping,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
                         use_cache=use_cache,
@@ -904,6 +907,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                             record_eigs=record_eigs, record_s2=record_s2, verbose=verbose,
                             compute_overlaps=compute_overlaps,
                             samples_per_epoch=samples_per_epoch, 
+                            early_stopping=early_stopping,
                             hold_early_cutoff=hold_early_cutoff,
                             wait_for_plateau=wait_for_plateau)
     
