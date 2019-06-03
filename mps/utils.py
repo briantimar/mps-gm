@@ -915,7 +915,20 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         print("Finished training")
     return model, logdict, metadata
 
-def two_phase_training():
+def two_phase_training(fname_outcomes, fname_angles, training_metadata, 
+                                    numpy_seed=0, 
+                                    N=None,seed=None,
+                                    val_fraction=.2,
+                                    record_eigs=False, record_s2=True,
+                                    compute_overlaps=True, use_cache=True,
+                                    verbose=True ):
+    """ Runs two phases of SGD training on the provided dataset.
+        First, <val_fraction> of the data is held out, and training proceeds until the val score stops 
+        decreasing. Then, the model is further trained on the full dataset until smoothed NLL score stops 
+        decreasing. 
+        Returns: model, logdict, metadata.
+        """
+    #phase 1 -- train with val held out.
     pass
 
 def train_from_filepath(fname_outcomes, fname_angles, 
