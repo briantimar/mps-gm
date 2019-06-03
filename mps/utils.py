@@ -278,6 +278,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         raise ValueError(""" Provide spinconfig and rotation datasets to enable overlap estimation """)
     if wait_for_tr_plateau and wait_for_val_plateau:
         raise ValueError("wait_for_tr_plateau and wait_for_val_plateau cannot be simultaneously specified.")
+    if (val_ds is None) and (early_stopping or wait_for_val_plateau):
+        raise ValueError("Stopping based on val score requested, but no val set provided.")
     #system size
     L = mps_model.L
     #logging the loss function
@@ -498,7 +500,8 @@ def train_from_dataset(meas_ds,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
                 compute_overlaps=True, samples_per_epoch=1, 
-                hold_early_cutoff=True, wait_for_tr_plateau=False):
+                hold_early_cutoff=True, wait_for_tr_plateau=False,
+                wait_for_val_plateau=False):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -529,43 +532,9 @@ def train_from_dataset(meas_ds,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
                                    samples_per_epoch=samples_per_epoch,
                                    hold_early_cutoff=hold_early_cutoff, 
-                                   wait_for_tr_plateau=wait_for_tr_plateau)
+                                   wait_for_tr_plateau=wait_for_tr_plateau,
+                                   wait_for_val_plateau=wait_for_val_plateau)
     return model, logdict
-
-def do_training(angles, pauli_outcomes, 
-                learning_rate, batch_size, epochs,
-                 s2_penalty=None, cutoff=1e-10,
-                 max_sv_to_keep = None,
-                ground_truth_mps=None, use_cache=True, seed=None, 
-                record_eigs=False, record_s2=False, verbose=False):
-    """ Train MPS on given angles and outcomes.
-        angles: (N, L, 2) numpy array of theta, phi angles
-        pauli_outcomes: (N, L) numpy array of corresponding pauli eigenvalue outcomes.
-        returns: trained mps and logdict holding loss and fidelity from training."""
-
-   
-   
-    from .qtools import pauli_exp
-    if seed is not None:
-        torch.manual_seed(seed)
-    
-    if angles.shape[:2] != pauli_outcomes.shape:
-        raise ValueError("angle and outcome arrays are incompatible")
-    L = angles.shape[1]
-    angles = torch.tensor(angles,
-                          dtype=torch.float, requires_grad=False)
-    
-    spin_config_outcomes = torch.tensor(
-        (1 - pauli_outcomes)/2, dtype=torch.long, requires_grad=False)
-
-    #generate local unitaries from angles
-    rotations = pauli_exp(angles[..., 0], angles[..., 1])
-    ds = MeasurementDataset(spin_config_outcomes, rotations)
-    return train_from_dataset(ds, learning_rate,batch_size, epochs, 
-                                s2_penalty=s2_penalty, cutoff=cutoff, 
-                                max_sv_to_keep=max_sv_to_keep, ground_truth_mps=ground_truth_mps, 
-                                use_cache=use_cache, seed=seed,record_eigs=record_eigs, 
-                                record_s2=record_s2, verbose=verbose)
 
 def compute_NLL(meas_ds,
                 model):
@@ -859,6 +828,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     batch_size = training_metadata['batch_size']
     hold_early_cutoff = training_metadata.get('hold_early_cutoff', True)
     wait_for_tr_plateau = training_metadata.get('wait_for_tr_plateau', False)
+    wait_for_val_plateau = training_metadata.get('wait_for_val_plateau', False)
     samples_per_epoch = training_metadata.get('samples_per_epoch', 1)
     early_stopping = training_metadata.get('early_stopping', False)
 
@@ -867,7 +837,8 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
         print("Hold early cutoff: {0}".format(hold_early_cutoff))
-        print("Wait for plateau:", wait_for_tr_plateau)
+        print("Wait for tr plateau:", wait_for_tr_plateau)
+        print("Wait for val plateau:", wait_for_val_plateau)
         print('Samples per epoch:', samples_per_epoch)
         if val_fraction is not None:
             print("Val fraction:", val_fraction)
@@ -902,6 +873,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     val_fraction=val_fraction,
                     hold_early_cutoff=hold_early_cutoff,
                     wait_for_tr_plateau=wait_for_tr_plateau,
+                    wait_for_val_plateau= wait_for_val_plateau,
                     early_stopping=early_stopping,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
@@ -923,7 +895,8 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                             samples_per_epoch=samples_per_epoch, 
                             early_stopping=early_stopping,
                             hold_early_cutoff=hold_early_cutoff,
-                            wait_for_tr_plateau=wait_for_tr_plateau)
+                            wait_for_tr_plateau=wait_for_tr_plateau,
+                            wait_for_val_plateau=wait_for_val_plateau)
     
     if verbose:
         print("Finished training")
