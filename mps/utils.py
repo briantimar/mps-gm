@@ -234,7 +234,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             compute_overlaps=True, spinconfig_all=None, rotations_all=None, 
                             samples_per_epoch=1, 
                             hold_early_cutoff=True, 
-                            wait_for_plateau=False):
+                            wait_for_tr_plateau=False, 
+                            wait_for_val_plateau=False):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -258,7 +259,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         compute_overlaps: whether to compute overlap estimates onto the target state.
             if true: spinconfig_all, rotations_all are used to compute the overlap estimates.
         hold_early_cutoff: if true, SVD cutoff is kept large at beginiing of training.
-        wait_for_plateau: if true, training will not be stopped until rolling average of the batched cost function plateaus.
+        wait_for_tr_plateau: if true, training will not be stopped until rolling average of the batched cost function plateaus.
+        wait_for_val_plateau: same thing, but plateau in the val score is required.
 
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
@@ -274,6 +276,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         s2_penalty = np.zeros(len(dataloader) * epochs)
     if compute_overlaps and ( spinconfig_all is None or rotations_all is None):
         raise ValueError(""" Provide spinconfig and rotation datasets to enable overlap estimation """)
+    if wait_for_tr_plateau and wait_for_val_plateau:
+        raise ValueError("wait_for_tr_plateau and wait_for_val_plateau cannot be simultaneously specified.")
     #system size
     L = mps_model.L
     #logging the loss function
@@ -296,7 +300,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     overlap_err = []
     overlap_converged = []
 
-    ## Wait-for-plateau settings
+    ## Wait-for-tr-plateau settings
     #window size for rolling average training cost (epochs)
     WINDOW = 10
     # train as long as cost function maintains this relative decrease
@@ -317,7 +321,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #period of the cutoff shaking -- number of sweeps (ie batches)
     CUTOFF_PERIOD = 6
 
-    MAX_EPS =500
+    MAX_EPS =2000
+    if epochs > MAX_EPS:
+        raise ValueError("Please increase MAX_EPS")
+    
 
     def get_shaken_cutoff(step):
         step = step % CUTOFF_PERIOD
@@ -343,7 +350,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     tr_plateau=False
 
     if len(dataloader) ==1:
-        wait_for_plateau = False
+        wait_for_tr_plateau = False
 
     while not training_finished:
         t0=time.time()
@@ -428,14 +435,15 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         #check whether validation score is flat
         if (val_ds is not None):
             val_loss.append(compute_NLL(val_ds, mps_model))
-            if early_stopping and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
+            if ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
                 rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP:]
-                if not (rel_val_loss_diff< - REL_VAL_EARLY_STOP).any():
-                    print("Val score not decreasing, halting training")
+                if not (rel_val_loss_diff < -REL_VAL_EARLY_STOP).any():
+                    if verbose:
+                        print("Val score not decreasing")
                     val_plateau = True
 
         #check whether training set score is flat.
-        if wait_for_plateau and ep > WINDOW:
+        if wait_for_tr_plateau and ep > WINDOW:
             avg_tr_cost = rolling_avg(losses, window=WINDOW*samples_per_epoch)
             recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW*samples_per_epoch:]
             # I call it a plateau if smoothed loss has spent more time increasing than decreasing
@@ -444,7 +452,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 print("Training plateau not reached, continuing...")
 
         ep +=1 
-        training_finished = val_plateau or ( (not wait_for_plateau) and ep == epochs) or (tr_plateau and (ep >= epochs)) or (ep >= MAX_EPS)
+
+        epochs_finished = (not (wait_for_tr_plateau or wait_for_val_plateau)) and (ep == epochs)
+        tr_plateau_and_epochs = tr_plateau and (ep >= epochs)
+        val_early_stop = early_stopping and val_plateau
+        val_plateau = wait_for_val_plateau and val_plateau
+        epoch_overflow = (ep >= MAX_EPS)
+        training_finished = epochs_finished or tr_plateau_and_epochs or val_early_stop or val_plateau or epoch_overflow 
 
         if verbose:
             print("Finished epoch {0} in {1:.3f} sec".format(ep, time.time() - t0))
@@ -484,7 +498,7 @@ def train_from_dataset(meas_ds,
                 ground_truth_mps=None, ground_truth_qutip=None, use_cache=True, seed=None, 
                 record_eigs=False, record_s2=False, verbose=False, early_stopping=True,
                 compute_overlaps=True, samples_per_epoch=1, 
-                hold_early_cutoff=True, wait_for_plateau=False):
+                hold_early_cutoff=True, wait_for_tr_plateau=False):
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
@@ -515,7 +529,7 @@ def train_from_dataset(meas_ds,
                                    compute_overlaps=compute_overlaps, spinconfig_all=spinconfig_all, rotations_all=rotations_all,
                                    samples_per_epoch=samples_per_epoch,
                                    hold_early_cutoff=hold_early_cutoff, 
-                                   wait_for_plateau=wait_for_plateau)
+                                   wait_for_tr_plateau=wait_for_tr_plateau)
     return model, logdict
 
 def do_training(angles, pauli_outcomes, 
@@ -844,7 +858,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     max_sv= training_metadata['max_sv']
     batch_size = training_metadata['batch_size']
     hold_early_cutoff = training_metadata.get('hold_early_cutoff', True)
-    wait_for_plateau = training_metadata.get('wait_for_plateau', False)
+    wait_for_tr_plateau = training_metadata.get('wait_for_tr_plateau', False)
     samples_per_epoch = training_metadata.get('samples_per_epoch', 1)
     early_stopping = training_metadata.get('early_stopping', False)
 
@@ -853,7 +867,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         for setting in ['lr_scale', 'lr_timescale', 's2_scale', 's2_timescale', 'epochs', 'cutoff', 'max_sv', 'batch_size']:
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
         print("Hold early cutoff: {0}".format(hold_early_cutoff))
-        print("Wait for plateau:", wait_for_plateau)
+        print("Wait for plateau:", wait_for_tr_plateau)
         print('Samples per epoch:', samples_per_epoch)
         if val_fraction is not None:
             print("Val fraction:", val_fraction)
@@ -887,7 +901,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                     seed=seed,
                     val_fraction=val_fraction,
                     hold_early_cutoff=hold_early_cutoff,
-                    wait_for_plateau=wait_for_plateau,
+                    wait_for_tr_plateau=wait_for_tr_plateau,
                     early_stopping=early_stopping,
                     epochs=epochs,cutoff=cutoff,
                         max_sv=max_sv, batch_size=batch_size,
@@ -909,7 +923,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
                             samples_per_epoch=samples_per_epoch, 
                             early_stopping=early_stopping,
                             hold_early_cutoff=hold_early_cutoff,
-                            wait_for_plateau=wait_for_plateau)
+                            wait_for_tr_plateau=wait_for_tr_plateau)
     
     if verbose:
         print("Finished training")
