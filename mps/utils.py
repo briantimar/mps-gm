@@ -915,6 +915,9 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
         print("Finished training")
     return model, logdict, metadata
 
+def two_phase_training():
+    pass
+
 def train_from_filepath(fname_outcomes, fname_angles, 
                                     fname_training_metadata,
                                     numpy_seed=0, 
