@@ -317,7 +317,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         overlap_err = logdict['overlap']['err']
         overlap_converged = logdict['overlap']['converged']
         start_epoch = logdict.get('epochs_trained',0)
-
+    start_step = len(losses)
     ## Wait-for-tr-plateau settings
     #window size for rolling average training cost (epochs)
     WINDOW = 10
@@ -469,8 +469,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 val_plateau = True
 
         #check whether training set score is flat.
-        if wait_for_tr_plateau and ep > WINDOW:
-            avg_tr_cost = rolling_avg(losses, window=WINDOW*samples_per_epoch)
+        if wait_for_tr_plateau and (ep-start_epoch) > WINDOW:
+            avg_tr_cost = rolling_avg(losses[start_step:], window=WINDOW*samples_per_epoch)
             recent_rel_cost = (np.diff(avg_tr_cost) / avg_tr_cost[1:])[-WINDOW*samples_per_epoch:]
             # I call it a plateau if smoothed loss has spent more time increasing than decreasing
             tr_plateau = np.sum(recent_rel_cost < 0) < (len(recent_rel_cost+1)//2)
