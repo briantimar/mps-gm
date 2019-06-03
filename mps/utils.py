@@ -264,7 +264,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         hold_early_cutoff: if true, SVD cutoff is kept large at beginiing of training.
         wait_for_tr_plateau: if true, training will not be stopped until rolling average of the batched cost function plateaus.
         wait_for_val_plateau: same thing, but plateau in the val score is required.
-        start_epoch: value to initialize the epoch counter (useful if continuing training)
+        start_epoch: value to initialize the epoch counter (useful if continuing training). If a logdict is provided, that value overrides kwarg.
 
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
@@ -316,6 +316,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         overlap = logdict['overlap']['mean']
         overlap_err = logdict['overlap']['err']
         overlap_converged = logdict['overlap']['converged']
+        start_epoch = logdict.get('epochs_trained',0)
 
     ## Wait-for-tr-plateau settings
     #window size for rolling average training cost (epochs)
@@ -369,6 +370,10 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     if len(dataloader) ==1:
         wait_for_tr_plateau = False
 
+    if verbose:
+        print("Starting training on model of shape:")
+        print(mps_model.shape)
+
     while not training_finished:
         t0=time.time()
         #load lr, s2 penalty, and max sv's for the epoch
@@ -391,13 +396,16 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
             rot = inputs['rotations']
             rotations = ComplexTensor(rot['real'], rot['imag'])
 
-            if ep < HOLD_EPOCHS:
-                sweep_cutoff = get_early_cutoff(step)
-            elif ep == HOLD_EPOCHS:
-                sweep_cutoff = get_decaying_cutoff(step)
+            if hold_early_cutoff:
+                if ep < HOLD_EPOCHS:
+                    sweep_cutoff = get_early_cutoff(step)
+                elif ep == HOLD_EPOCHS:
+                    sweep_cutoff = get_decaying_cutoff(step)
+                else:  
+                    sweep_cutoff = cutoff
             else:
                 sweep_cutoff = cutoff
-          
+
             #forward sweep across the chain
             if use_cache:
                 mps_model.init_sweep('right', spinconfig,rotation=rotations)
@@ -449,15 +457,16 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                         overlap_err.append(float(sig))
                         overlap_converged.append(float(convergence_acheived))
         
-        #check whether validation score is flat
-        if (val_ds is not None):
-            val_loss.append(compute_NLL(val_ds, mps_model))
-            if ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
-                rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP:]
-                if not (rel_val_loss_diff < -REL_VAL_EARLY_STOP).any():
-                    if verbose:
-                        print("Val score not decreasing")
-                    val_plateau = True
+                    if (val_ds is not None):
+                        val_loss.append(compute_NLL(val_ds, mps_model))
+
+
+        if (val_ds is not None) and ep>max(NUM_EP_EARLY_STOP, MIN_EPOCHS):
+            rel_val_loss_diff = (np.diff(val_loss)/val_loss[1:])[-NUM_EP_EARLY_STOP*samples_per_epoch::samples_per_epoch]
+            if not (rel_val_loss_diff < -REL_VAL_EARLY_STOP).any():
+                if verbose:
+                    print("Val score not decreasing")
+                val_plateau = True
 
         #check whether training set score is flat.
         if wait_for_tr_plateau and ep > WINDOW:
@@ -470,7 +479,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
 
         ep +=1 
 
-        epochs_finished = (not (wait_for_tr_plateau or wait_for_val_plateau)) and (ep == epochs)
+        epochs_finished = (not (wait_for_tr_plateau or wait_for_val_plateau)) and (ep - start_epoch == epochs)
         tr_plateau_and_epochs = tr_plateau and (ep >= epochs)
         val_early_stop = early_stopping and val_plateau
         val_plateau = wait_for_val_plateau and val_plateau
@@ -491,7 +500,8 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                 val_loss=(val_loss), 
                 overlap=dict(mean=(overlap), 
                             err=(overlap_err), 
-                            converged=(overlap_converged)))
+                            converged=(overlap_converged)),
+                epochs_trained=ep)
                 
 def draw_random(mps, N):
     """ Draw N samples from mps, each taken in a random basis.
@@ -954,7 +964,7 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
     trsettings2['wait_for_tr_plateau'] = True
     trsettings2['val_fraction'] = None
     trsettings2['hold_early_cutoff'] = False
-    trsettings2[]
+    
     
     model, logdict, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
                                                 numpy_seed=numpy_seed, N=N, seed=seed,
