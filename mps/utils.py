@@ -915,8 +915,18 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
         decreasing. 
         Returns: model, logdict, metadata.
         """
+    if val_fraction <= 0 or val_fraction >=1:
+        raise ValueError("Please specify a valid val_fraction")
     #phase 1 -- train with val held out.
-    pass
+    trsettings1 = training_metadata.copy()
+    trsettings1['wait_for_val_plateau'] = True
+    model1, logdict1, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
+                                                numpy_seed=numpy_seed, N=N, seed=seed,
+                                                val_fraction=val_fraction, 
+                                                record_eigs=record_eigs, record_s2=record_s2,
+                                                compute_overlaps=compute_overlaps, use_cache=use_cache, 
+                                                verbose=verbose)
+    
 
 def train_from_filepath(fname_outcomes, fname_angles, 
                                     fname_training_metadata,
