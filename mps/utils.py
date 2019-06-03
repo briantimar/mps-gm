@@ -322,13 +322,13 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
     #window size for rolling average training cost (epochs)
     WINDOW = 10
     # train as long as cost function maintains this relative decrease
-    REL_TR_DECREASE=1e-3
+    # REL_TR_DECREASE=1e-3
 
     ## Early stopping settings
     #how many epochs must val score fail to improve before we stop?
-    NUM_EP_EARLY_STOP=5
+    NUM_EP_EARLY_STOP=WINDOW
     #val score must decrease by at least this fraction to count as improvement.
-    REL_VAL_EARLY_STOP=1e-3
+    REL_VAL_EARLY_STOP=1e-4
 
     #only enforced if early stopping -- training will not halt below this value
     MIN_EPOCHS = 20
