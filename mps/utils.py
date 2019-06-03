@@ -225,6 +225,7 @@ def split_dataset(ds, val_fraction=.2):
 
 def do_local_sgd_training(mps_model, dataloader, epochs, 
                             learning_rate, 
+                            logdict=None,
                             val_ds = None, 
                             s2_penalty=None,nstep=1,
                             cutoff=1e-10,max_sv_to_keep=None, 
@@ -282,25 +283,36 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         raise ValueError("Stopping based on val score requested, but no val set provided.")
     #system size
     L = mps_model.L
-    #logging the loss function
-    losses = []
-    losses_by_ep=[]
-    #if ground-truth MPS is known, compute fidelity at each step
-    fidelities_mps = []
-    #same, for ground_truth qutip state
-    fidelities_qutip = []
-    # record max bond_dim
-    max_bond_dim = []
-    #record eigenspectrum cutting across chain center
-    eigenvalues = []
-    #Renyi-2 entropy cutting across chain center
-    s2 = []
-    #losses on validation set
-    val_loss = []
-    #overlap estimates on the source state
-    overlap = []
-    overlap_err = []
-    overlap_converged = []
+    if logdict is None:
+        #logging the loss function
+        losses = []
+        #if ground-truth MPS is known, compute fidelity at each step
+        fidelities_mps = []
+        #same, for ground_truth qutip state
+        fidelities_qutip = []
+        # record max bond_dim
+        max_bond_dim = []
+        #record eigenspectrum cutting across chain center
+        eigenvalues = []
+        #Renyi-2 entropy cutting across chain center
+        s2 = []
+        #losses on validation set
+        val_loss = []
+        #overlap estimates on the source state
+        overlap = []
+        overlap_err = []
+        overlap_converged = []
+    else:
+        losses = logdict['loss']
+        fidelities_mps = logdict['fidelity_mps']
+        fidelities_qutip = logdict['fidelity_qutip']
+        max_bond_dim = logdict['max_bond_dim']
+        eigenvalues = logdict['eigenvalues']
+        s2 = logdict['s2']
+        val_loss = logdict['val_loss']
+        overlap = logdict['overlap']['mean']
+        overlap_err = logdict['overlap']['err']
+        overlap_converged = logdict['overlap']['converged']
 
     ## Wait-for-tr-plateau settings
     #window size for rolling average training cost (epochs)
@@ -494,6 +506,8 @@ def draw_random(mps, N):
 
 def train_from_dataset(meas_ds,
                 learning_rate, batch_size, epochs,
+                model=None,
+                logdict=None,
                 val_ds=None,
                  s2_penalty=None, cutoff=1e-10,
                  max_sv_to_keep = None,
@@ -505,7 +519,7 @@ def train_from_dataset(meas_ds,
     """ Given a MeasurementDataset ds, create and train an MPS on it.
         val_ds: if not None, validation dataset on which NLL will be computed after each epoch"""
     from torch.utils.data import DataLoader
-    from .models import MPS
+    
     if seed is not None:
         torch.manual_seed(seed)
     L = meas_ds[0]['samples'].size(0)
@@ -520,8 +534,11 @@ def train_from_dataset(meas_ds,
         spinconfig_all, rotations_all = meas_ds.unpack()
     dl = DataLoader(meas_ds, batch_size=batch_size, shuffle=True)
     #train a model
-    model = MPS(L, local_dim=2, bond_dim=2)
+    if model is None:
+        from .models import MPS
+        model = MPS(L, local_dim=2, bond_dim=2)
     logdict = do_local_sgd_training(model, dl, epochs, learning_rate,
+                                    logdict=logdict,
                                     val_ds=val_ds,
                                     s2_penalty=s2_penalty,cutoff=cutoff,
                                     max_sv_to_keep=max_sv_to_keep,
@@ -800,22 +817,19 @@ def to_json(d):
             d[k] = list(v)
 
 def train_from_dict(fname_outcomes, fname_angles, training_metadata, 
+                                    model=None, logdict=None,
                                     numpy_seed=0, 
                                     N=None,seed=None,
-                                    val_fraction=None,
                                     record_eigs=False, record_s2=True,
                                     compute_overlaps=True, use_cache=True,
                                     verbose=True ):
-    """ Train MPS on the given (outcomes, angles) dataset with settings provided by a dictionary."""
+    """ Train MPS on the given (outcomes, angles) dataset with settings provided by a dictionary.
+        model, logdict: if not None, a previously trained model and its corresponding training log."""
+
     #load a measurement dataset from the spec'd numpy files
     ds = get_dataset_from_settings_and_samples(fname_outcomes,fname_angles,numpy_seed=numpy_seed,N=N,verbose=verbose)
     L=ds[0]['samples'].size(0)
         
-    if val_fraction is not None:
-        train_ds, val_ds = split_dataset(ds, val_fraction=val_fraction)
-    else:
-        train_ds = ds
-        val_ds = None
 
     #training hyperparameters
     lr_scale = training_metadata['lr_scale']
@@ -831,6 +845,14 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
     wait_for_val_plateau = training_metadata.get('wait_for_val_plateau', False)
     samples_per_epoch = training_metadata.get('samples_per_epoch', 1)
     early_stopping = training_metadata.get('early_stopping', False)
+    val_fraction = training_metadata.get('val_fraction', None)
+
+    if val_fraction is not None:
+        train_ds, val_ds = split_dataset(ds, val_fraction=val_fraction)
+    else:
+        train_ds = ds
+        val_ds = None
+
 
     if verbose:
         print("Loaded the following settings:")
@@ -885,6 +907,7 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
 
     model, logdict = train_from_dataset(train_ds,
                             learning_rate, batch_size, epochs,
+                            model=model, logdict=logdict,
                             val_ds=val_ds,
                             s2_penalty=s2_penalty, cutoff=cutoff,
                             max_sv_to_keep=max_sv,
@@ -905,7 +928,6 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
 def two_phase_training(fname_outcomes, fname_angles, training_metadata, 
                                     numpy_seed=0, 
                                     N=None,seed=None,
-                                    val_fraction=.2,
                                     record_eigs=False, record_s2=True,
                                     compute_overlaps=True, use_cache=True,
                                     verbose=True ):
@@ -915,17 +937,30 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
         decreasing. 
         Returns: model, logdict, metadata.
         """
-    if val_fraction <= 0 or val_fraction >=1:
+    val_fraction = training_metadata['val_fraction']
+    if val_fraction <= 0 or val_fraction >=1 or val_fraction is None:
         raise ValueError("Please specify a valid val_fraction")
     #phase 1 -- train with val held out.
     trsettings1 = training_metadata.copy()
     trsettings1['wait_for_val_plateau'] = True
-    model1, logdict1, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
+    
+    #phase 2 -- train a bit more on the full set.
+    trsettings2 = training_metadata.copy()
+    trsettings2['wait_for_tr_plateau'] = True
+    trsettings2['val_fraction'] = None
+    
+    model, logdict, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
                                                 numpy_seed=numpy_seed, N=N, seed=seed,
-                                                val_fraction=val_fraction, 
                                                 record_eigs=record_eigs, record_s2=record_s2,
                                                 compute_overlaps=compute_overlaps, use_cache=use_cache, 
                                                 verbose=verbose)
+
+    model, logdict, metadata2 = train_from_dict(fname_outcomes, fname_angles, trsettings2, 
+                                                numpy_seed=numpy_seed, N=N, seed=seed,
+                                                record_eigs=record_eigs, record_s2=record_s2,
+                                                compute_overlaps=compute_overlaps, use_cache=use_cache, 
+                                                verbose=verbose)
+    return model, logdict, metadata1
     
 
 def train_from_filepath(fname_outcomes, fname_angles, 
