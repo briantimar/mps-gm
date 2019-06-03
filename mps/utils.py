@@ -283,7 +283,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         raise ValueError("Stopping based on val score requested, but no val set provided.")
     #system size
     L = mps_model.L
-    if logdict is None:
+    if True:
         #logging the loss function
         losses = []
         #if ground-truth MPS is known, compute fidelity at each step
@@ -302,17 +302,17 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         overlap = []
         overlap_err = []
         overlap_converged = []
-    else:
-        losses = logdict['loss']
-        fidelities_mps = logdict['fidelity_mps']
-        fidelities_qutip = logdict['fidelity_qutip']
-        max_bond_dim = logdict['max_bond_dim']
-        eigenvalues = logdict['eigenvalues']
-        s2 = logdict['s2']
-        val_loss = logdict['val_loss']
-        overlap = logdict['overlap']['mean']
-        overlap_err = logdict['overlap']['err']
-        overlap_converged = logdict['overlap']['converged']
+    # else:
+    #     losses = logdict['loss']
+    #     fidelities_mps = logdict['fidelity_mps']
+    #     fidelities_qutip = logdict['fidelity_qutip']
+    #     max_bond_dim = logdict['max_bond_dim']
+    #     eigenvalues = logdict['eigenvalues']
+    #     s2 = logdict['s2']
+    #     val_loss = logdict['val_loss']
+    #     overlap = logdict['overlap']['mean']
+    #     overlap_err = logdict['overlap']['err']
+    #     overlap_converged = logdict['overlap']['converged']
 
     ## Wait-for-tr-plateau settings
     #window size for rolling average training cost (epochs)
@@ -949,18 +949,19 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
     trsettings2['wait_for_tr_plateau'] = True
     trsettings2['val_fraction'] = None
     
-    model, logdict, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
+    model, logdict1, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
                                                 numpy_seed=numpy_seed, N=N, seed=seed,
                                                 record_eigs=record_eigs, record_s2=record_s2,
                                                 compute_overlaps=compute_overlaps, use_cache=use_cache, 
                                                 verbose=verbose)
 
-    model, logdict, metadata2 = train_from_dict(fname_outcomes, fname_angles, trsettings2, 
+    model, logdict2, metadata2 = train_from_dict(fname_outcomes, fname_angles, trsettings2, 
                                                 numpy_seed=numpy_seed, N=N, seed=seed,
+                                                model=model,
                                                 record_eigs=record_eigs, record_s2=record_s2,
                                                 compute_overlaps=compute_overlaps, use_cache=use_cache, 
                                                 verbose=verbose)
-    return model, logdict, metadata1
+    return model, logdict1, logdict2, metadata1, metadata2
     
 
 def train_from_filepath(fname_outcomes, fname_angles, 
