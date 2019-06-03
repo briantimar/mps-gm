@@ -236,7 +236,9 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
                             samples_per_epoch=1, 
                             hold_early_cutoff=True, 
                             wait_for_tr_plateau=False, 
-                            wait_for_val_plateau=False):
+                            wait_for_val_plateau=False, 
+                            start_epoch=0
+                            ):
     """Perform SGD local-update training on an MPS model using measurement outcomes and rotations
     from provided dataloader.
         mps_model: an MPS
@@ -262,6 +264,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         hold_early_cutoff: if true, SVD cutoff is kept large at beginiing of training.
         wait_for_tr_plateau: if true, training will not be stopped until rolling average of the batched cost function plateaus.
         wait_for_val_plateau: same thing, but plateau in the val score is required.
+        start_epoch: value to initialize the epoch counter (useful if continuing training)
 
         Returns: dictionary, mapping:
                     'loss' -> batched loss function during training
@@ -358,7 +361,7 @@ def do_local_sgd_training(mps_model, dataloader, epochs,
         return CUTOFF_MAX + (cutoff - CUTOFF_MAX) * (step) / (len(dataloader)-1)
 
     sample_step = len(dataloader) // samples_per_epoch
-    ep=0
+    ep=start_epoch
     training_finished=False
     val_plateau=False
     tr_plateau=False
@@ -860,11 +863,13 @@ def train_from_dict(fname_outcomes, fname_angles, training_metadata,
             print("{0} = {1:3e}".format(setting, training_metadata[setting]))
         print("Hold early cutoff: {0}".format(hold_early_cutoff))
         print("Wait for tr plateau:", wait_for_tr_plateau)
-        print("Wait for val plateau:", wait_for_val_plateau)
         print('Samples per epoch:', samples_per_epoch)
         if val_fraction is not None:
             print("Val fraction:", val_fraction)
             print("Early stopping:", early_stopping)
+            print("Wait for val plateau:", wait_for_val_plateau)
+        if model is not None:
+            print("Training on supplied model")
 
     #other settings for training...
     ground_truth_mps_path = training_metadata.get('mps_path', None)
@@ -948,6 +953,8 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
     trsettings2 = training_metadata.copy()
     trsettings2['wait_for_tr_plateau'] = True
     trsettings2['val_fraction'] = None
+    trsettings2['hold_early_cutoff'] = False
+    trsettings2[]
     
     model, logdict, metadata1 = train_from_dict(fname_outcomes, fname_angles, trsettings1, 
                                                 numpy_seed=numpy_seed, N=N, seed=seed,
