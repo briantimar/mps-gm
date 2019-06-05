@@ -543,6 +543,8 @@ def train_from_dataset(meas_ds,
         print("Training on system size %d with %d samples"%(L, N))
     spinconfig_all, rotations_all= None, None
     if compute_overlaps:
+        raise NotImplementedError
+        #TODO this unpack() doesn't work for Subsets of MeasurementDataset
         #overlaps computed on full dataset
         spinconfig_all, rotations_all = meas_ds.unpack()
     dl = DataLoader(meas_ds, batch_size=batch_size, shuffle=True)
@@ -944,7 +946,7 @@ def two_phase_training(fname_outcomes, fname_angles, training_metadata,
                                     numpy_seed=0, 
                                     N=None,seed=None,
                                     record_eigs=False, record_s2=True,
-                                    compute_overlaps=True, use_cache=True,
+                                    compute_overlaps=False, use_cache=True,
                                     verbose=True ):
     """ Runs two phases of SGD training on the provided dataset.
         First, <val_fraction> of the data is held out, and training proceeds until the val score stops 
