@@ -1,0 +1,2 @@
+Note: the D=16 label here is a bit misleading. As I should have realized before running these experiments, an MPS on a chain of length L will 
+have bond dimension at most 2^(L-1) after normalization. So the max bond dimension of the state used here is actually 8.

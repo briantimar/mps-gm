@@ -18,21 +18,21 @@ np.random.seed(0)
 
 for L in system_sizes:
     print("Sampling from system size %d" %L)
-    print("Sampling from GHZ+ state")
-    ghz_plus = build_ghz_plus(L)
+    # print("Sampling from GHZ+ state")
+    # ghz_plus = build_ghz_plus(L)
 
 #     angles, outcomes = draw_random(ghz_plus, Nsamp)
 
         
 #     np.save(savedir + "ghz_plus_L=%d_angles"%L, angles)
 #     np.save(savedir + "ghz_plus_L=%d_outcomes" % L,outcomes)
-    ghz_plus.save(savedir + "ghz_plus_L=%d_state"%L)
+    # ghz_plus.save(savedir + "ghz_plus_L=%d_state"%L)
 
-#     print("sampling from random states")
-#     for D in bond_dims:
-#         print("using bond dimension %d"%D)
-#         psi = build_random_mps(L,D)
-#         angles, outcomes = draw_random(psi, Nsamp)
-#         np.save(savedir + "rand_L=%d_D=%d_angles" % (L,D), angles)
-#         np.save(savedir + "rand_L=%d_D=%d_outcomes" % (L,D), outcomes)
-#         psi.save(savedir + "rand_L=%d_D=%d_state" % (L,D))
+    print("sampling from random states")
+    for D in bond_dims:
+        print("using bond dimension %d"%D)
+        psi = build_random_mps(L,D)
+        angles, outcomes = draw_random(psi, Nsamp)
+        np.save(savedir + "rand_L=%d_D=%d_angles" % (L,D), angles)
+        np.save(savedir + "rand_L=%d_D=%d_outcomes" % (L,D), outcomes)
+        psi.save(savedir + "rand_L=%d_D=%d_state" % (L,D))

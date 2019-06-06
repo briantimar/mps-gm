@@ -1,0 +1,1 @@
+{"epochs": 10, "lr_scale": 0.001, "lr_timescale": 1000, "s2_scale": 0, "s2_timescale": 1000, "batch_size": 512, "cutoff": 0.001, "max_sv": 25, "val_fraction": 0.2, "early_stopping": false, "mps_path": "../../datasets/mps_sampled/rand_L=4_D=16_state", "samples_per_epoch": 2}
