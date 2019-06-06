@@ -1,0 +1,2 @@
+In `data`: results of training on a single fixed dataset, for 20 different seeds MPS seeds (reused for different `D` values)
+In `data_varying_numpy_seed`: each (D, seed) pair has a unique data and MPS seed.
