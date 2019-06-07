@@ -10,7 +10,7 @@ Dtarget=14
 
 Dvals = list(range(2, 16, 2))
 
-numseed = 20
+numseed = 25
 N=10000
 numD = len(Dvals)
 
