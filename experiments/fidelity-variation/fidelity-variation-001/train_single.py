@@ -44,7 +44,8 @@ def train(name, system_size, batch_size, seed=0, numpy_seed=0):
 
 if __name__ == '__main__':
     name = sys.argv[1]
-    system_size = sys.argv[2]
-    batch_size = sys.argv[3]
-    print("Now training on {0}, system size {1}, batch size {2}".format(name, system_size, batch_size))
-    train(name, system_size, batch_size)
+    system_size = int(sys.argv[2])
+    batch_size = int(sys.argv[3])
+    seed = int(sys.argv[4])
+    print("Now training on {0}, system size {1}, batch size {2}, seed {3}".format(name, system_size, batch_size, seed))
+    train(name, system_size, batch_size, seed=seed)

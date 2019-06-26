@@ -7,4 +7,6 @@ I've found a large variation in the final MPS fidelity when training on the XY-q
 
 ## ID
 (Used to specify data folder, etc)
-fidelity-variation-001
+### fidelity-variation-001
+    Here, I'm just training with a fixed batch size on various ground states, to see whether the high fidelity variance observed in the XY training
+    exists when training on ground states as well.
