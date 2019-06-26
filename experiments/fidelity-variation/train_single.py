@@ -24,7 +24,7 @@ def get_logdict_path(name, system_size, batch_size):
     return get_base_path(name, system_size, batch_size) + "_logdict.json"
 
 
-def train(name, system_size, batch_size, numpy_seed=0):
+def train(name, system_size, batch_size, seed=0, numpy_seed=0):
     """ Train MPS on a particular state type and system size, using the batch size specified
     and the other training settings specified in `settings.json`.
 
@@ -34,6 +34,7 @@ def train(name, system_size, batch_size, numpy_seed=0):
     settings_path, samples_path = get_data_paths(name, system_size)
     training_settings = get_training_settings(batch_size, qutip_path)
     model, logdict, meta = two_phase_training(samples_path, settings_path, training_settings, 
+                                                seed=seed,
                                                 numpy_seed=numpy_seed)
     
     model.save(get_model_path(name, system_size, batch_size))
