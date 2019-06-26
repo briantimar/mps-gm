@@ -1,0 +1,9 @@
+{"max_sv": 30, 
+    "lr_scale": 0.001, 
+    "lr_timescale": 1000, 
+    "s2_scale": 0.0, 
+    "s2_timescale": 1000, 
+    "cutoff": 1e-3, 
+    "epochs": 10, 
+    "val_fraction": 0.2
+}
