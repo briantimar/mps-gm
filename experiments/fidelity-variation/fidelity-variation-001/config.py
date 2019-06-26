@@ -3,11 +3,13 @@ import numpy as np
 import qutip as qt
 
 #where exact qutip states are stored
-STATES_ROOT = "/Users/btimar/Dropbox/data/states/qutip"
+# STATES_ROOT = "/Users/btimar/Dropbox/data/states/qutip"
+STATES_ROOT = "/home/btimar/data/states/qutip"
 #where the corresponding random-unitary data are located
-DATA_ROOT = "/Users/btimar/Dropbox/data/random_unitary_data/from_qutip_states/seed_3"
+# DATA_ROOT = "/Users/btimar/Dropbox/data/random_unitary_data/from_qutip_states/seed_3"
+DATA_ROOT = "/home/btimar/data/random_unitary_samples/from_qutip_states/seed_3"
 #where to write the trained states
-SAVEDIR = "/Users/btimar/Dropbox/data/mps/fidelity-variation-001"
+SAVEDIR = "/home/btimar/data/mps-gm-testing/fidelity-variation-001"
 
 state_names = ["ghz", "heisenberg_ground", "rydberg_ground", "tfim_ground"]
 system_sizes = [2,4,6,8]
