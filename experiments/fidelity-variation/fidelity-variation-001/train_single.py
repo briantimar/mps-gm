@@ -2,7 +2,7 @@ from config import get_data_paths, get_qutip_path
 import sys
 import json
 import os
-sys.path.append('../..')
+sys.path.append('../../..')
 from mps.utils import two_phase_training
 
 def get_training_settings(batch_size, qutip_path):
