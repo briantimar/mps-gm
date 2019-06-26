@@ -6,6 +6,8 @@ import qutip as qt
 STATES_ROOT = "/Users/btimar/Dropbox/data/states/qutip"
 #where the corresponding random-unitary data are located
 DATA_ROOT = "/Users/btimar/Dropbox/data/random_unitary_data/from_qutip_states/seed_3"
+#where to write the trained states
+SAVEDIR = "/Users/btimar/Dropbox/data/mps/fidelity-variation-001"
 
 state_names = ["ghz", "heisenberg_ground", "rydberg_ground", "tfim_ground"]
 system_sizes = [2,4,6,8]

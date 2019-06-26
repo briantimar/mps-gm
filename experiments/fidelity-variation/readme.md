@@ -4,3 +4,7 @@ I've found a large variation in the final MPS fidelity when training on the XY-q
 
 1. Is this generally true?
 2. If so, can it be 'cured' by reducing batch size? Or lr decay?
+
+## ID
+(Used to specify data folder, etc)
+fidelity-variation-001
