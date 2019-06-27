@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=fidelity-var
-#SBATCH --nodes=5
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=2
 #SBATCH --output=/home/btimar/slurm-logs/fidelity-variation-001.out
 #SBATCH --time=24:00:00
