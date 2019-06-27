@@ -12,17 +12,16 @@ def get_training_settings(batch_size, qutip_path):
     settings['qutip_path'] = qutip_path
     return settings
 
-def get_base_path(name, system_size, batch_size):
+def get_base_path(name, system_size, batch_size, seed):
     """ Base path for saving the trained model data."""
     from config import SAVEDIR
-    return os.path.join(SAVEDIR, "{0}_L={1}_batch_size={2}".format(name, system_size, batch_size))
+    return os.path.join(SAVEDIR, "{0}_L={1}_batch_size={2}_seed={3}".format(name, system_size, batch_size,seed))
 
-def get_model_path(name, system_size, batch_size):
-    return get_base_path(name, system_size, batch_size) + "_model"
+def get_model_path(name, system_size, batch_size, seed):
+    return get_base_path(name, system_size, batch_size, seed) + "_model"
 
-def get_logdict_path(name, system_size, batch_size):
-    return get_base_path(name, system_size, batch_size) + "_logdict.json"
-
+def get_logdict_path(name, system_size, batch_size, seed):
+    return get_base_path(name, system_size, batch_size, seed) + "_logdict.json"
 
 def train(name, system_size, batch_size, seed=0, numpy_seed=0):
     """ Train MPS on a particular state type and system size, using the batch size specified
@@ -37,8 +36,8 @@ def train(name, system_size, batch_size, seed=0, numpy_seed=0):
                                                 seed=seed,
                                                 numpy_seed=numpy_seed)
     
-    model.save(get_model_path(name, system_size, batch_size))
-    with open(get_logdict_path(name, system_size, batch_size), 'w') as f:
+    model.save(get_model_path(name, system_size, batch_size, seed))
+    with open(get_logdict_path(name, system_size, batch_size, seed), 'w') as f:
         json.dump(logdict, f)
 
 
