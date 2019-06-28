@@ -744,6 +744,10 @@ def get_dataset_from_settings_and_samples(fname_outcomes, fname_angles, numpy_se
     pauli_outcomes = np.load(fname_outcomes)
     angles = np.load(fname_angles)
 
+    #check that data have been saved as pauli eigenvalues, rather than eg occupation numbers
+    if (np.abs(pauli_outcomes)<1e-3).any():
+        raise ValueError("Inputs to training should be +-1 pauli eigenvalues!")
+
     if numpy_seed is not None:
         np.random.seed(numpy_seed)
         perm = np.random.permutation(angles.shape[0])
