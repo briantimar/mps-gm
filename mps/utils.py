@@ -22,6 +22,10 @@ def svd(A, cutoff=1e-8, max_sv_to_keep=None):
         v.shape = (k,M)
         and k is the number of singular values retained.
         """
+    if np.isnan(A).any():
+        raise ValueError("Nan's present in input matrix!")
+    if np.isinf(A).any():
+        raise ValueError("Inf's present in input matrix!")
     try:
         if A.dtype in (np.complex128, np.complex64):
             u,s,v = svd_zgesvd(A, full_matrices=False, compute_uv=True)
